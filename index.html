@@ -1,629 +1,179 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Caja SC Básquet — Club Independiente de Tandil</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=Archivo+Narrow:wght@500;700&display=swap" rel="stylesheet">
-<style>
-:root{
-  --negro:#16121A; --negro2:#221B26; --rojo:#C8102E; --rojo2:#E01B33;
-  --dorado:#D9A03C; --crema:#F6F1E7; --papel:#FBF8F2; --borde:#E4DCCB;
-  --verde:#1F8A4C; --verde2:#E4F3EA; --rojoNeg:#B3122B; --rojoNeg2:#FBE7EA;
-  --tinta:#2A2430; --gris:#7A7284;
-}
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{font-family:'Archivo',system-ui,sans-serif;background:var(--crema);color:var(--tinta);min-height:100vh;padding-bottom:90px}
-.num{font-variant-numeric:tabular-nums}
+/************************************************************
+ * CAJA SC BÁSQUET — Backend en Google Apps Script (v2 — con comprobantes)
+ * Club Independiente de Tandil
+ *
+ * CÓMO USARLO:
+ * 1) Creá un Google Sheet nuevo (nombre sugerido: "Caja SC Básquet")
+ * 2) Extensiones → Apps Script → borrá todo y pegá este código
+ * 3) En el editor, ejecutá una vez la función  setup  (botón ▶)
+ *    → te va a pedir permisos, aceptá. Eso crea las hojas
+ *    "Movimientos" y "Cajas" con las 4 cajas iniciales.
+ * 4) Implementar → Nueva implementación → tipo "Aplicación web"
+ *    - Ejecutar como: Yo
+ *    - Acceso: Cualquier usuario
+ *    → Copiá la URL que termina en /exec
+ * 5) Pegá esa URL en el index.html donde dice SCRIPT_URL
+https://script.google.com/macros/s/AKfycbxFxiAhX_AdditAEZ9Z3Rzbcukuc3_17XM9aYDpVYoc4xVwRpDQuZmsFp5-vp6K8X4Y/exec 
 
-/* ---------- HEADER ---------- */
-header{background:var(--negro);color:var(--crema);padding:16px 16px 14px;position:relative;overflow:hidden}
-header::after{content:"";position:absolute;left:0;right:0;bottom:0;height:5px;
-  background:repeating-linear-gradient(90deg,var(--rojo) 0 28px,var(--negro) 28px 40px,var(--dorado) 40px 46px,var(--negro) 46px 58px)}
-header h1{font-weight:900;font-size:1.25rem;letter-spacing:.5px;text-transform:uppercase}
-header h1 span{color:var(--rojo2)}
-header p{font-size:.72rem;color:#B9AFA0;letter-spacing:1.5px;text-transform:uppercase;margin-top:2px}
-.hbtns{position:absolute;top:14px;right:12px;display:flex;gap:8px}
-.hbtn{background:var(--negro2);border:1px solid #3A3142;color:var(--crema);border-radius:10px;padding:8px 10px;font-size:1rem;cursor:pointer}
-.hbtn.spin .icref{display:inline-block;animation:rot 1s linear infinite}
-@keyframes rot{to{transform:rotate(360deg)}}
-.estado{display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:.68rem;font-weight:700;
-  letter-spacing:.8px;text-transform:uppercase;padding:4px 10px;border-radius:20px;background:var(--negro2);border:1px solid #3A3142}
-.estado .pt{width:8px;height:8px;border-radius:50%}
-.estado.vivo{color:#7BD8A0}.estado.vivo .pt{background:#3AC46F;box-shadow:0 0 6px #3AC46F}
-.estado.sync{color:var(--dorado)}.estado.sync .pt{background:var(--dorado);animation:blink 1s infinite}
-.estado.off{color:#FF7B8E}.estado.off .pt{background:#FF4D66}
-@keyframes blink{50%{opacity:.25}}
+const HOJA_MOVS  = 'Movimientos';
+const HOJA_CAJAS = 'Cajas';
 
-/* ---------- TABS ---------- */
-nav{position:fixed;bottom:0;left:0;right:0;background:var(--negro);display:flex;z-index:50;
-  border-top:2px solid var(--rojo);padding-bottom:env(safe-area-inset-bottom)}
-nav button{flex:1;background:none;border:none;color:#8E8496;padding:9px 2px 8px;font-family:inherit;
-  font-size:.58rem;font-weight:700;text-transform:uppercase;letter-spacing:.3px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
-nav button .ic{font-size:1.15rem;line-height:1}
-nav button.on{color:var(--dorado)}
+/* ---------- Crear estructura inicial (ejecutar 1 vez) ---------- */
+function setup() {
+  const ss = SpreadsheetApp.getActive();
 
-main{padding:14px 12px 20px;max-width:760px;margin:0 auto}
-.pane{display:none}.pane.on{display:block;animation:fade .18s ease}
-@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-
-h2.sec{font-size:.78rem;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:var(--gris);margin:4px 2px 10px;display:flex;align-items:center;gap:8px}
-h2.sec::after{content:"";flex:1;height:1px;background:var(--borde)}
-
-/* ---------- CARGA ---------- */
-.card{background:var(--papel);border:1px solid var(--borde);border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(22,18,26,.06)}
-label.f{display:block;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--gris);margin:12px 0 5px}
-label.f:first-child{margin-top:0}
-input,select{width:100%;padding:11px 12px;border:1.5px solid var(--borde);border-radius:10px;font-family:inherit;font-size:1rem;background:#fff;color:var(--tinta)}
-input:focus,select:focus{outline:none;border-color:var(--rojo)}
-.tipoRow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.tipoBtn{padding:12px;border-radius:10px;border:1.5px solid var(--borde);background:#fff;font-family:inherit;font-weight:700;font-size:.95rem;cursor:pointer;color:var(--gris)}
-.tipoBtn.ing.on{background:var(--verde2);border-color:var(--verde);color:var(--verde)}
-.tipoBtn.egr.on{background:var(--rojoNeg2);border-color:var(--rojoNeg);color:var(--rojoNeg)}
-.agregar{width:100%;margin-top:16px;padding:14px;border:none;border-radius:12px;background:var(--rojo);color:#fff;
-  font-family:inherit;font-weight:900;font-size:1.02rem;text-transform:uppercase;letter-spacing:1.5px;cursor:pointer;box-shadow:0 3px 0 #8C0B20}
-.agregar:active{transform:translateY(2px);box-shadow:0 1px 0 #8C0B20}
-.agregar:disabled{opacity:.55;cursor:wait}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:96px;background:var(--negro);color:var(--dorado);
-  padding:10px 18px;border-radius:20px;font-size:.85rem;font-weight:700;z-index:99;opacity:0;transition:.25s;pointer-events:none;border:1px solid var(--dorado);max-width:90vw;text-align:center}
-.toast.show{opacity:1}
-
-/* ---------- SALDOS ---------- */
-.tablero{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.cajaCard{background:var(--negro);border-radius:14px;padding:12px;color:var(--crema);position:relative;overflow:hidden;border:1px solid #352B3D}
-.cajaCard::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:var(--rojo)}
-.cajaCard h3{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#B9AFA0;margin-bottom:6px;min-height:2em}
-.cajaCard .saldo{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:1.55rem;letter-spacing:.5px}
-.saldo.pos{color:#7BD8A0}.saldo.neg{color:#FF7B8E}.saldo.cero{color:#CFC6BA}
-.cajaCard .mini{display:flex;justify-content:space-between;margin-top:8px;font-size:.68rem;color:#8E8496}
-.cajaCard .mini b{color:var(--crema)}
-.totalCard{grid-column:1/-1;background:linear-gradient(135deg,var(--negro) 55%,#2B1016);border:1px solid var(--rojo);text-align:center;padding:18px 12px}
-.totalCard::before{background:var(--dorado)}
-.totalCard h3{color:var(--dorado);min-height:auto}
-.totalCard .saldo{font-size:2.3rem}
-.waBtn{width:100%;margin-top:12px;padding:13px;border:none;border-radius:12px;background:#25D366;color:#fff;font-family:inherit;font-weight:900;font-size:.95rem;text-transform:uppercase;letter-spacing:1px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
-.copyBtn{width:100%;margin-top:8px;padding:11px;border:1.5px solid var(--borde);border-radius:12px;background:#fff;color:var(--tinta);font-family:inherit;font-weight:700;font-size:.88rem;cursor:pointer}
-
-/* ---------- TABLAS ---------- */
-.twrap{overflow-x:auto;border:1px solid var(--borde);border-radius:12px;background:var(--papel)}
-table{width:100%;border-collapse:collapse;font-size:.78rem}
-th{background:var(--negro);color:var(--crema);padding:8px 9px;text-align:left;font-size:.62rem;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap;position:sticky;top:0}
-td{padding:8px 9px;border-top:1px solid var(--borde);white-space:nowrap;vertical-align:middle}
-tr:nth-child(even) td{background:#F3EEE2}
-td.r,th.r{text-align:right}
-.tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.66rem;font-weight:700}
-.tag.ing{background:var(--verde2);color:var(--verde)}
-.tag.egr{background:var(--rojoNeg2);color:var(--rojoNeg)}
-.vPos{color:var(--verde);font-weight:700}.vNeg{color:var(--rojoNeg);font-weight:700}.vCero{color:var(--gris)}
-tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
-.rowBtns button{background:none;border:none;font-size:1rem;cursor:pointer;padding:2px 5px}
-.vacio{text-align:center;padding:34px 16px;color:var(--gris);font-size:.9rem;background:var(--papel);border:1.5px dashed var(--borde);border-radius:14px}
-
-.filtros{display:flex;gap:8px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px}
-.filtros select{width:auto;flex:1;min-width:120px;padding:8px 10px;font-size:.85rem}
-
-/* ---------- RESUMEN MENSUAL ---------- */
-.meses{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.mesCard{background:var(--papel);border:1px solid var(--borde);border-radius:12px;padding:12px}
-.mesCard h4{font-size:.8rem;font-weight:900;text-transform:capitalize;color:var(--rojo);border-bottom:2px solid var(--negro);padding-bottom:5px;margin-bottom:8px}
-.mesCard .fila{display:flex;justify-content:space-between;font-size:.8rem;padding:3px 0}
-.mesCard .fila.sal{border-top:1px dashed var(--borde);margin-top:4px;padding-top:6px;font-weight:900}
-
-/* ---------- CONFIG ---------- */
-.cfgCaja{display:flex;gap:8px;align-items:center;background:var(--papel);border:1px solid var(--borde);border-radius:10px;padding:9px 10px;margin-bottom:8px}
-.cfgCaja .nom{flex:1;font-weight:700;font-size:.9rem}
-.cfgCaja .col{font-size:.7rem;color:var(--gris)}
-.btnSec{padding:10px 14px;border:1.5px solid var(--negro);border-radius:10px;background:var(--negro);color:#fff;font-family:inherit;font-weight:700;font-size:.85rem;cursor:pointer}
-.btnGhost{padding:10px 14px;border:1.5px solid var(--borde);border-radius:10px;background:#fff;color:var(--tinta);font-family:inherit;font-weight:700;font-size:.85rem;cursor:pointer}
-.cfgRow{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
-
-/* ---------- MODAL ---------- */
-.modalBg{position:fixed;inset:0;background:rgba(22,18,26,.6);z-index:100;display:none;align-items:flex-end;justify-content:center}
-.modalBg.on{display:flex}
-.modal{background:var(--crema);border-radius:18px 18px 0 0;padding:18px 16px 26px;width:100%;max-width:520px;max-height:85vh;overflow-y:auto}
-.modal h3{font-size:1rem;font-weight:900;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;color:var(--negro)}
-@media(min-width:600px){.modalBg{align-items:center}.modal{border-radius:18px}}
-
-/* ---------- PANTALLA CARGA INICIAL / SETUP ---------- */
-.overlay{position:fixed;inset:0;background:var(--negro);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--crema);text-align:center;padding:24px}
-.overlay .aro{width:52px;height:52px;border-radius:50%;border:4px solid #3A3142;border-top-color:var(--rojo);animation:rot 1s linear infinite;margin-bottom:18px}
-.overlay h2{font-weight:900;text-transform:uppercase;letter-spacing:1px;font-size:1.1rem}
-.overlay p{color:#B9AFA0;font-size:.85rem;margin-top:6px;max-width:340px}
-.overlay.hide{display:none}
-.overlay .reint{margin-top:18px;padding:12px 24px;border:none;border-radius:10px;background:var(--rojo);color:#fff;font-family:inherit;font-weight:900;font-size:.9rem;text-transform:uppercase;letter-spacing:1px;cursor:pointer}
-</style>
-</head>
-<body>
-
-<div class="overlay" id="overlay">
-  <div class="aro" id="ovAro"></div>
-  <h2 id="ovTit">Conectando con la caja...</h2>
-  <p id="ovTxt">Trayendo los datos en vivo desde Google Sheets</p>
-</div>
-
-<header>
-  <h1>Caja <span>SC Básquet</span></h1>
-  <p>Tesorería · Club Independiente de Tandil</p>
-  <div class="estado sync" id="estado"><span class="pt"></span><span id="estadoTxt">Conectando</span></div>
-  <div class="hbtns">
-    <button class="hbtn" id="btnRef" onclick="refrescar(true)" title="Actualizar"><span class="icref">🔄</span></button>
-    <button class="hbtn" onclick="abrirConfig()" title="Configuración">⚙️</button>
-  </div>
-</header>
-
-<main>
-  <!-- CARGA -->
-  <section class="pane on" id="p-carga">
-    <h2 class="sec">Carga de movimientos</h2>
-    <div class="card">
-      <label class="f">Fecha</label>
-      <input type="date" id="fFecha">
-      <label class="f">Caja</label>
-      <select id="fCaja"></select>
-      <label class="f">Tipo</label>
-      <div class="tipoRow">
-        <button class="tipoBtn ing" id="btnIng" onclick="setTipo('Ingreso')">▲ Ingreso</button>
-        <button class="tipoBtn egr" id="btnEgr" onclick="setTipo('Egreso')">▼ Egreso</button>
-      </div>
-      <label class="f">Detalle</label>
-      <input type="text" id="fDetalle" placeholder="Ej: Cuota mensual U13, viaje a Necochea...">
-      <label class="f">Monto ($)</label>
-      <input type="number" id="fMonto" inputmode="numeric" placeholder="0">
-      <button class="agregar" id="btnAgregar" onclick="agregar()">＋ Agregar movimiento</button>
-    </div>
-  </section>
-
-  <!-- REGISTRO -->
-  <section class="pane" id="p-registro">
-    <h2 class="sec">Registro de movimientos</h2>
-    <div class="filtros">
-      <select id="filtCaja" onchange="render()"></select>
-      <select id="filtTipo" onchange="render()">
-        <option value="">Todos los tipos</option>
-        <option>Ingreso</option><option>Egreso</option>
-      </select>
-    </div>
-    <div id="tReg"></div>
-  </section>
-
-  <!-- DETALLE Y SALDO -->
-  <section class="pane" id="p-detalle">
-    <h2 class="sec">Detalle y saldo</h2>
-    <div id="tDet"></div>
-  </section>
-
-  <!-- LIBRO -->
-  <section class="pane" id="p-libro">
-    <h2 class="sec">Libro de caja — saldos por caja</h2>
-    <div id="tLibro"></div>
-    <h2 class="sec" style="margin-top:20px">Resumen mensual</h2>
-    <div class="meses" id="tMeses"></div>
-  </section>
-
-  <!-- SALDOS -->
-  <section class="pane" id="p-saldos">
-    <h2 class="sec">Saldos por caja</h2>
-    <div class="tablero" id="tSaldos"></div>
-    <button class="waBtn" onclick="enviarWA()">📱 Enviar saldos por WhatsApp</button>
-    <button class="copyBtn" onclick="copiarWA()">Copiar mensaje</button>
-  </section>
-</main>
-
-<nav>
-  <button class="on" onclick="tab('carga',this)"><span class="ic">📝</span>Carga</button>
-  <button onclick="tab('registro',this)"><span class="ic">📒</span>Registro</button>
-  <button onclick="tab('detalle',this)"><span class="ic">📊</span>Detalle</button>
-  <button onclick="tab('libro',this)"><span class="ic">📚</span>Libro</button>
-  <button onclick="tab('saldos',this)"><span class="ic">💰</span>Saldos</button>
-</nav>
-
-<div class="toast" id="toast"></div>
-
-<!-- MODAL CONFIG -->
-<div class="modalBg" id="mConfig">
-  <div class="modal">
-    <h3>⚙️ Configuración</h3>
-    <h2 class="sec" style="margin-top:14px">Cajas</h2>
-    <div id="cfgLista"></div>
-    <div class="cfgRow">
-      <button class="btnSec" onclick="nuevaCaja()">＋ Agregar caja</button>
-    </div>
-    <h2 class="sec" style="margin-top:20px">Datos</h2>
-    <div class="cfgRow">
-      <button class="btnGhost" onclick="exportarJSON()">⬇️ Exportar copia (JSON)</button>
-    </div>
-    <p style="font-size:.72rem;color:var(--gris);margin-top:10px">
-      💡 Los datos viven en el Google Sheet compartido. El Sheet mismo es el respaldo:
-      podés abrirlo en cualquier momento y descargarlo como Excel.
-    </p>
-    <div class="cfgRow" style="margin-top:16px">
-      <button class="btnGhost" style="flex:1" onclick="cerrarConfig()">Cerrar</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL EDITAR MOV -->
-<div class="modalBg" id="mEdit">
-  <div class="modal">
-    <h3>✏️ Editar movimiento</h3>
-    <label class="f">Fecha</label><input type="date" id="eFecha">
-    <label class="f">Caja</label><select id="eCaja"></select>
-    <label class="f">Tipo</label>
-    <select id="eTipo"><option>Ingreso</option><option>Egreso</option></select>
-    <label class="f">Detalle</label><input type="text" id="eDetalle">
-    <label class="f">Monto ($)</label><input type="number" id="eMonto" inputmode="numeric">
-    <div class="cfgRow" style="margin-top:16px">
-      <button class="btnSec" style="flex:1" onclick="guardarEdit()">Guardar</button>
-      <button class="btnGhost" onclick="cerrarEdit()">Cancelar</button>
-    </div>
-  </div>
-</div>
-
-<script>
-/* ============================================================
-   ▼▼▼ PEGÁ ACÁ LA URL DE TU APPS SCRIPT (termina en /exec) ▼▼▼
-   ============================================================ */
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzAsZb0uZB5bvc0-S9EoGmxR7RTNyKH4cYlhGxFKWgnNLuDCu410fKml_u2mrRfX8Oc/exec';
-/* ============================================================ */
-
-const CACHE_KEY = 'caja_sc_cache_v2';
-const REFRESH_MS = 60000; // auto-actualiza cada 60 segundos
-
-let db = { cajas: [], movs: [] };
-let editId = null;
-let ocupado = false;
-
-/* ================= HELPERS ================= */
-const $ = id => document.getElementById(id);
-function fmt(n){ const neg=n<0,v=Math.abs(Math.round(n)); return (neg?'-':'')+'$'+v.toLocaleString('es-AR'); }
-function clsVal(n){ return n>0?'vPos':(n<0?'vNeg':'vCero'); }
-function fmtFecha(f){ const p=String(f).split('-'); return p.length===3? p[2]+'/'+p[1]+'/'+p[0].slice(2):f; }
-function hoy(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-function toast(t){ const e=$('toast'); e.textContent=t; e.classList.add('show'); setTimeout(()=>e.classList.remove('show'),2400); }
-function cajaById(id){ return db.cajas.find(c=>String(c.id)===String(id)); }
-function movsOrdenados(){ return [...db.movs].sort((a,b)=> String(a.fecha)===String(b.fecha) ? Number(a.id)-Number(b.id) : String(a.fecha).localeCompare(String(b.fecha))); }
-function signo(m){ return m.tipo==='Ingreso'? Number(m.monto) : -Number(m.monto); }
-function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-/* ================= ESTADO DE CONEXIÓN ================= */
-function setEstado(modo, txt){
-  const e=$('estado');
-  e.className='estado '+modo;
-  $('estadoTxt').textContent=txt;
-}
-
-/* ================= API ================= */
-async function apiGet(){
-  const r = await fetch(SCRIPT_URL, {method:'GET'});
-  const d = await r.json();
-  if(!d.ok) throw new Error(d.error||'Respuesta inválida');
-  return d;
-}
-async function apiPost(payload){
-  const r = await fetch(SCRIPT_URL, {
-    method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify(payload)
-  });
-  const d = await r.json();
-  if(!d.ok) throw new Error(d.error||'Respuesta inválida');
-  return d;
-}
-function aplicarDatos(d){
-  db.cajas = d.cajas||[];
-  db.movs  = d.movs||[];
-  try{ localStorage.setItem(CACHE_KEY, JSON.stringify({t:Date.now(), db})); }catch(e){}
-  llenarSelects(); render();
-}
-
-/* ================= CARGA INICIAL ================= */
-async function iniciar(){
-  if(SCRIPT_URL==='PEGAR_URL_AQUI'){
-    $('ovAro').style.display='none';
-    $('ovTit').textContent='⚙️ Falta configurar';
-    $('ovTxt').innerHTML='Abrí el <b>index.html</b> y pegá la URL de tu Apps Script en la constante <b>SCRIPT_URL</b> (línea marcada con ▼▼▼). Después volvé a subirlo a GitHub.';
-    return;
+  let hm = ss.getSheetByName(HOJA_MOVS);
+  if (!hm) hm = ss.insertSheet(HOJA_MOVS);
+  if (hm.getLastRow() === 0) {
+    hm.appendRow(['id', 'fecha', 'cajaId', 'tipo', 'detalle', 'monto', 'comprobante']);
+    hm.getRange('B:B').setNumberFormat('@'); // fecha como texto YYYY-MM-DD
+    hm.setFrozenRows(1);
+  } else {
+    // migración: agrega la columna comprobante si la hoja ya existía
+    const cab = hm.getRange(1, 1, 1, hm.getLastColumn()).getValues()[0];
+    if (cab.indexOf('comprobante') === -1) {
+      hm.getRange(1, cab.length + 1).setValue('comprobante');
+    }
   }
-  // pinta rápido desde caché mientras trae lo fresco
-  try{
-    const c=JSON.parse(localStorage.getItem(CACHE_KEY));
-    if(c&&c.db){ db=c.db; llenarSelects(); render(); }
-  }catch(e){}
-  await refrescar(false);
-  $('overlay').classList.add('hide');
-  setInterval(()=>{ if(!ocupado) refrescar(false); }, REFRESH_MS);
-  document.addEventListener('visibilitychange',()=>{ if(!document.hidden && !ocupado) refrescar(false); });
+  obtenerCarpetaComprobantes(); // crea la carpeta en Drive si no existe
+
+  let hc = ss.getSheetByName(HOJA_CAJAS);
+  if (!hc) hc = ss.insertSheet(HOJA_CAJAS);
+  if (hc.getLastRow() === 0) {
+    hc.appendRow(['id', 'nombre', 'columna', 'corto']);
+    hc.appendRow(['andres', 'Caja Andrés',       'Caja Andrés',   'Andrés']);
+    hc.appendRow(['paolo',  'Caja Paolo (club)', 'Caja Paolo',    'Paolo (club)']);
+    hc.appendRow(['gefvo',  'Caja Gastón efvo',  'Caja Gastón',   'Gastón efvo']);
+    hc.appendRow(['glemon', 'Caja Gastón Lemon', 'Cuenta Gastón', 'Gastón Lemon']);
+    hc.setFrozenRows(1);
+  }
 }
-async function refrescar(manual){
-  setEstado('sync','Actualizando');
-  $('btnRef').classList.add('spin');
-  try{
-    aplicarDatos(await apiGet());
-    setEstado('vivo','En vivo');
-    if(manual) toast('🔄 Caja actualizada');
-  }catch(e){
-    setEstado('off','Sin conexión');
-    if(manual) toast('⚠️ No se pudo actualizar. Revisá tu conexión.');
-    if(!db.cajas.length){
-      $('ovAro').style.display='none';
-      $('ovTit').textContent='😕 No se pudo conectar';
-      $('ovTxt').textContent='Revisá tu conexión a internet o que la URL del Apps Script esté bien pegada y publicada como "Cualquier usuario".';
-      if(!$('btnReint')){
-        const b=document.createElement('button');
-        b.id='btnReint'; b.className='reint'; b.textContent='Reintentar';
-        b.onclick=()=>{ $('ovTit').textContent='Conectando con la caja...'; $('ovAro').style.display=''; iniciarReintento(); };
-        $('overlay').appendChild(b);
+
+/* ---------- API ---------- */
+function doGet() {
+  return out(getAll());
+}
+
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const req = JSON.parse(e.postData.contents);
+    const ss  = SpreadsheetApp.getActive();
+
+    switch (req.action) {
+
+      case 'addMov': {
+        const m = req.mov;
+        let link = '';
+        if (req.foto && req.foto.base64) link = guardarComprobante(req.foto.base64, m.id);
+        ss.getSheetByName(HOJA_MOVS)
+          .appendRow([m.id, String(m.fecha), m.cajaId, m.tipo, m.detalle, Number(m.monto), link]);
+        break;
+      }
+
+      case 'updateMov': {
+        const m  = req.mov;
+        const sh = ss.getSheetByName(HOJA_MOVS);
+        const fila = buscarFila(sh, m.id);
+        if (fila > 0) {
+          let link = m.comprobante || '';
+          if (req.foto && req.foto.base64) link = guardarComprobante(req.foto.base64, m.id);
+          sh.getRange(fila, 1, 1, 7)
+            .setValues([[m.id, String(m.fecha), m.cajaId, m.tipo, m.detalle, Number(m.monto), link]]);
+        }
+        break;
+      }
+
+      case 'deleteMov': {
+        const sh = ss.getSheetByName(HOJA_MOVS);
+        const fila = buscarFila(sh, req.id);
+        if (fila > 0) sh.deleteRow(fila);
+        break;
+      }
+
+      case 'addCaja': {
+        const c = req.caja;
+        ss.getSheetByName(HOJA_CAJAS).appendRow([c.id, c.nombre, c.columna, c.corto]);
+        break;
+      }
+
+      case 'updateCaja': {
+        const c  = req.caja;
+        const sh = ss.getSheetByName(HOJA_CAJAS);
+        const fila = buscarFila(sh, c.id);
+        if (fila > 0) {
+          sh.getRange(fila, 1, 1, 4).setValues([[c.id, c.nombre, c.columna, c.corto]]);
+        }
+        break;
+      }
+
+      case 'deleteCaja': {
+        const sh = ss.getSheetByName(HOJA_CAJAS);
+        const fila = buscarFila(sh, req.id);
+        if (fila > 0) sh.deleteRow(fila);
+        break;
       }
     }
-  }finally{
-    $('btnRef').classList.remove('spin');
-  }
-}
-async function iniciarReintento(){
-  try{
-    aplicarDatos(await apiGet());
-    setEstado('vivo','En vivo');
-    $('overlay').classList.add('hide');
-  }catch(e){
-    $('ovTit').textContent='😕 No se pudo conectar';
-    $('ovAro').style.display='none';
+    return out(getAll());
+  } catch (err) {
+    return out({ ok: false, error: String(err) });
+  } finally {
+    lock.releaseLock();
   }
 }
 
-/* ================= MUTACIONES (con sync) ================= */
-async function mutar(payload, msgOk){
-  if(ocupado) return;
-  ocupado=true;
-  setEstado('sync','Guardando');
-  $('btnAgregar').disabled=true;
-  try{
-    aplicarDatos(await apiPost(payload));
-    setEstado('vivo','En vivo');
-    toast(msgOk);
-    return true;
-  }catch(e){
-    setEstado('off','Sin conexión');
-    toast('⚠️ No se guardó. Probá de nuevo.');
-    return false;
-  }finally{
-    ocupado=false;
-    $('btnAgregar').disabled=false;
-  }
+/* ---------- Helpers ---------- */
+function getAll() {
+  const ss = SpreadsheetApp.getActive();
+  return {
+    ok: true,
+    cajas: leerHoja(ss.getSheetByName(HOJA_CAJAS)),
+    movs:  leerHoja(ss.getSheetByName(HOJA_MOVS))
+  };
 }
 
-/* ================= TABS ================= */
-function tab(n,btn){
-  document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
-  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
-  $('p-'+n).classList.add('on'); btn.classList.add('on');
-  render();
+function leerHoja(sh) {
+  if (!sh || sh.getLastRow() < 2) return [];
+  const datos = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  const cab = datos[0];
+  const tz  = Session.getScriptTimeZone();
+  return datos.slice(1)
+    .filter(f => f[0] !== '' && f[0] !== null)
+    .map(f => {
+      const o = {};
+      cab.forEach((c, i) => {
+        let v = f[i];
+        if (v instanceof Date) v = Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+        o[c] = v;
+      });
+      return o;
+    });
 }
 
-/* ================= CARGA ================= */
-let tipoSel='Ingreso';
-function setTipo(t){
-  tipoSel=t;
-  $('btnIng').classList.toggle('on',t==='Ingreso');
-  $('btnEgr').classList.toggle('on',t==='Egreso');
-}
-async function agregar(){
-  const fecha=$('fFecha').value, cajaId=$('fCaja').value,
-        detalle=$('fDetalle').value.trim(), monto=parseFloat($('fMonto').value);
-  if(!fecha) return toast('⚠️ Falta la fecha');
-  if(!cajaId) return toast('⚠️ Elegí la caja');
-  if(!detalle) return toast('⚠️ Falta el detalle');
-  if(!monto||monto<=0) return toast('⚠️ Monto inválido');
-  const ok=await mutar({action:'addMov', mov:{id:Date.now(), fecha, cajaId, tipo:tipoSel, detalle, monto}}, '✅ Movimiento agregado');
-  if(ok){ $('fDetalle').value=''; $('fMonto').value=''; }
+function buscarFila(sh, id) {
+  const ids = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 1), 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === String(id)) return i + 2;
+  }
+  return -1;
 }
 
-/* ================= REGISTRO ================= */
-function renderRegistro(){
-  const fc=$('filtCaja').value, ft=$('filtTipo').value;
-  let ms=movsOrdenados().reverse();
-  if(fc) ms=ms.filter(m=>String(m.cajaId)===fc);
-  if(ft) ms=ms.filter(m=>m.tipo===ft);
-  if(!ms.length){ $('tReg').innerHTML='<div class="vacio">Sin movimientos todavía.<br>Cargá el primero desde la pestaña 📝 Carga.</div>'; return; }
-  let h='<div class="twrap"><table><thead><tr><th>Fecha</th><th>Caja</th><th>Tipo</th><th>Detalle</th><th class="r">Monto</th><th></th></tr></thead><tbody>';
-  for(const m of ms){
-    const c=cajaById(m.cajaId);
-    h+=`<tr><td class="num">${fmtFecha(m.fecha)}</td><td>${c?esc(c.nombre):'—'}</td>
-      <td><span class="tag ${m.tipo==='Ingreso'?'ing':'egr'}">${m.tipo}</span></td>
-      <td style="white-space:normal;min-width:130px">${esc(m.detalle)}</td>
-      <td class="r num ${m.tipo==='Ingreso'?'vPos':'vNeg'}">${fmt(Number(m.monto))}</td>
-      <td class="rowBtns"><button onclick="abrirEdit('${m.id}')">✏️</button><button onclick="borrar('${m.id}')">🗑️</button></td></tr>`;
-  }
-  $('tReg').innerHTML=h+'</tbody></table></div>';
-}
-async function borrar(id){
-  const m=db.movs.find(x=>String(x.id)===String(id));
-  if(!m) return;
-  if(!confirm(`¿Borrar este movimiento?\n${fmtFecha(m.fecha)} · ${m.detalle} · ${fmt(Number(m.monto))}\n\n(Se borra para todos)`)) return;
-  await mutar({action:'deleteMov', id:m.id}, '🗑️ Borrado');
-}
-function abrirEdit(id){
-  const m=db.movs.find(x=>String(x.id)===String(id)); if(!m) return;
-  editId=m.id;
-  llenarSelectCajas($('eCaja'));
-  $('eFecha').value=m.fecha; $('eCaja').value=String(m.cajaId); $('eTipo').value=m.tipo;
-  $('eDetalle').value=m.detalle; $('eMonto').value=m.monto;
-  $('mEdit').classList.add('on');
-}
-function cerrarEdit(){ $('mEdit').classList.remove('on'); editId=null; }
-async function guardarEdit(){
-  const m=db.movs.find(x=>String(x.id)===String(editId)); if(!m) return;
-  const monto=parseFloat($('eMonto').value);
-  if(!$('eFecha').value||!$('eDetalle').value.trim()||!monto||monto<=0) return toast('⚠️ Revisá los datos');
-  const ok=await mutar({action:'updateMov', mov:{
-    id:m.id, fecha:$('eFecha').value, cajaId:$('eCaja').value,
-    tipo:$('eTipo').value, detalle:$('eDetalle').value.trim(), monto
-  }}, '✅ Guardado');
-  if(ok) cerrarEdit();
+function obtenerCarpetaComprobantes() {
+  const it = DriveApp.getFoldersByName('Comprobantes Caja SC');
+  return it.hasNext() ? it.next() : DriveApp.createFolder('Comprobantes Caja SC');
 }
 
-/* ================= DETALLE Y SALDO ================= */
-function renderDetalle(){
-  const ms=movsOrdenados();
-  if(!ms.length){ $('tDet').innerHTML='<div class="vacio">Sin movimientos todavía.</div>'; return; }
-  let h='<div class="twrap"><table><thead><tr><th>Fecha</th><th>Caja</th><th>Tipo</th><th>Detalle</th><th class="r">Monto</th><th class="r">Saldo</th>';
-  for(const c of db.cajas) h+=`<th class="r">${esc(c.columna)}</th>`;
-  h+='</tr></thead><tbody>';
-  let saldo=0; const acum={}; db.cajas.forEach(c=>acum[c.id]=0);
-  for(const m of ms){
-    const s=signo(m); saldo+=s;
-    if(acum[m.cajaId]!==undefined) acum[m.cajaId]+=s;
-    h+=`<tr><td class="num">${fmtFecha(m.fecha)}</td><td>${cajaById(m.cajaId)?esc(cajaById(m.cajaId).nombre):'—'}</td>
-      <td><span class="tag ${m.tipo==='Ingreso'?'ing':'egr'}">${m.tipo}</span></td>
-      <td style="white-space:normal;min-width:120px">${esc(m.detalle)}</td>
-      <td class="r num ${m.tipo==='Ingreso'?'vPos':'vNeg'}">${fmt(Number(m.monto))}</td>
-      <td class="r num ${clsVal(saldo)}">${fmt(saldo)}</td>`;
-    for(const c of db.cajas) h+=`<td class="r num ${clsVal(acum[c.id])}">${fmt(acum[c.id])}</td>`;
-    h+='</tr>';
-  }
-  $('tDet').innerHTML=h+'</tbody></table></div>';
+function guardarComprobante(base64, id) {
+  const carpeta = obtenerCarpetaComprobantes();
+  const blob = Utilities.newBlob(Utilities.base64Decode(base64), 'image/jpeg', 'comprobante-' + id + '.jpg');
+  const archivo = carpeta.createFile(blob);
+  archivo.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return 'https://drive.google.com/file/d/' + archivo.getId() + '/view';
 }
 
-/* ================= LIBRO + MENSUAL ================= */
-function totalesPorCaja(){
-  const t={}; db.cajas.forEach(c=>t[c.id]={ing:0,egr:0});
-  for(const m of db.movs){
-    if(!t[m.cajaId]) continue;
-    if(m.tipo==='Ingreso') t[m.cajaId].ing+=Number(m.monto); else t[m.cajaId].egr+=Number(m.monto);
-  }
-  return t;
+function out(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
 }
-function renderLibro(){
-  const t=totalesPorCaja();
-  let ti=0,te=0;
-  let h='<div class="twrap"><table><thead><tr><th>Caja</th><th class="r">Ingresos</th><th class="r">Egresos</th><th class="r">Saldo</th></tr></thead><tbody>';
-  for(const c of db.cajas){
-    const x=t[c.id], s=x.ing-x.egr; ti+=x.ing; te+=x.egr;
-    h+=`<tr><td><b>${esc(c.nombre)}</b></td><td class="r num vPos">${fmt(x.ing)}</td><td class="r num vNeg">${fmt(x.egr)}</td><td class="r num ${clsVal(s)}">${fmt(s)}</td></tr>`;
-  }
-  h+=`</tbody><tfoot><tr><td>TOTAL</td><td class="r num">${fmt(ti)}</td><td class="r num">${fmt(te)}</td><td class="r num">${fmt(ti-te)}</td></tr></tfoot></table></div>`;
-  $('tLibro').innerHTML=h;
-}
-function renderMeses(){
-  const meses={};
-  for(const m of db.movs){
-    const k=String(m.fecha).slice(0,7);
-    if(!meses[k]) meses[k]={ing:0,egr:0};
-    if(m.tipo==='Ingreso') meses[k].ing+=Number(m.monto); else meses[k].egr+=Number(m.monto);
-  }
-  const keys=Object.keys(meses).sort();
-  if(!keys.length){ $('tMeses').innerHTML='<div class="vacio" style="grid-column:1/-1">Sin datos mensuales todavía.</div>'; return; }
-  const nom=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-  let h='';
-  for(const k of keys){
-    const [a,mm]=k.split('-'), x=meses[k], s=x.ing-x.egr;
-    h+=`<div class="mesCard"><h4>${nom[+mm-1]} ${a}</h4>
-      <div class="fila"><span>Ingresos</span><b class="num vPos">${fmt(x.ing)}</b></div>
-      <div class="fila"><span>Egresos</span><b class="num vNeg">${fmt(x.egr)}</b></div>
-      <div class="fila sal"><span>Saldo</span><b class="num ${clsVal(s)}">${fmt(s)}</b></div></div>`;
-  }
-  $('tMeses').innerHTML=h;
-}
-
-/* ================= SALDOS ================= */
-function renderSaldos(){
-  const t=totalesPorCaja();
-  let total=0, h='';
-  for(const c of db.cajas){
-    const x=t[c.id], s=x.ing-x.egr; total+=s;
-    h+=`<div class="cajaCard"><h3>${esc(c.nombre)}</h3>
-      <div class="saldo num ${s>0?'pos':(s<0?'neg':'cero')}">${fmt(s)}</div>
-      <div class="mini"><span>▲ <b class="num">${fmt(x.ing)}</b></span><span>▼ <b class="num">${fmt(x.egr)}</b></span></div></div>`;
-  }
-  h+=`<div class="cajaCard totalCard"><h3>Saldo total SC</h3>
-    <div class="saldo num ${total>0?'pos':(total<0?'neg':'cero')}">${fmt(total)}</div></div>`;
-  $('tSaldos').innerHTML=h;
-}
-function msgWA(){
-  const t=totalesPorCaja();
-  let total=0, lineas=[];
-  for(const c of db.cajas){
-    const s=t[c.id].ing-t[c.id].egr; total+=s;
-    lineas.push(`${c.corto||c.nombre}: ${fmt(s)}`);
-  }
-  return `*SALDOS - Subcomisión Básquet*\n${lineas.join('\n')}\n——————\n*TOTAL SC: ${fmt(total)}*`;
-}
-function enviarWA(){ window.open('https://wa.me/?text='+encodeURIComponent(msgWA()),'_blank'); }
-function copiarWA(){
-  navigator.clipboard.writeText(msgWA()).then(()=>toast('📋 Mensaje copiado'))
-    .catch(()=>toast('⚠️ No se pudo copiar'));
-}
-
-/* ================= CONFIG ================= */
-function abrirConfig(){ renderConfig(); $('mConfig').classList.add('on'); }
-function cerrarConfig(){ $('mConfig').classList.remove('on'); }
-function renderConfig(){
-  let h='';
-  for(const c of db.cajas){
-    h+=`<div class="cfgCaja">
-      <div style="flex:1"><div class="nom">${esc(c.nombre)}</div><div class="col">Columna: ${esc(c.columna)} · WhatsApp: ${esc(c.corto)}</div></div>
-      <button style="background:none;border:none;font-size:1rem;cursor:pointer" onclick="editarCaja('${c.id}')">✏️</button>
-      <button style="background:none;border:none;font-size:1rem;cursor:pointer" onclick="borrarCaja('${c.id}')">🗑️</button>
-    </div>`;
-  }
-  $('cfgLista').innerHTML=h||'<div class="vacio">Sin cajas configuradas.</div>';
-}
-async function nuevaCaja(){
-  const nombre=prompt('Nombre de la nueva caja (ej: Caja Buffet):'); if(!nombre) return;
-  const columna=prompt('Nombre de la columna en Detalle y Saldo:',nombre)||nombre;
-  const corto=prompt('Nombre corto para el mensaje de WhatsApp:',nombre.replace(/^Caja /i,''))||nombre;
-  const ok=await mutar({action:'addCaja', caja:{id:'c'+Date.now(), nombre:nombre.trim(), columna:columna.trim(), corto:corto.trim()}}, '✅ Caja agregada');
-  if(ok) renderConfig();
-}
-async function editarCaja(id){
-  const c=cajaById(id); if(!c) return;
-  const nombre=prompt('Nombre de la caja:',c.nombre); if(!nombre) return;
-  const columna=(prompt('Nombre de la columna:',c.columna)||c.columna).trim();
-  const corto=(prompt('Nombre corto WhatsApp:',c.corto)||c.corto).trim();
-  const ok=await mutar({action:'updateCaja', caja:{id:c.id, nombre:nombre.trim(), columna, corto}}, '✅ Caja actualizada');
-  if(ok) renderConfig();
-}
-async function borrarCaja(id){
-  const c=cajaById(id); if(!c) return;
-  const usados=db.movs.filter(m=>String(m.cajaId)===String(id)).length;
-  if(usados>0) return alert(`No se puede borrar "${c.nombre}": tiene ${usados} movimiento(s) cargado(s). Primero borrá o reasigná esos movimientos.`);
-  if(!confirm(`¿Borrar la caja "${c.nombre}"? (Se borra para todos)`)) return;
-  const ok=await mutar({action:'deleteCaja', id:c.id}, '🗑️ Caja borrada');
-  if(ok) renderConfig();
-}
-
-/* ================= EXPORT ================= */
-function exportarJSON(){
-  const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='copia-caja-sc-'+hoy()+'.json';
-  a.click();
-  toast('⬇️ Copia exportada');
-}
-
-/* ================= RENDER GENERAL ================= */
-function llenarSelectCajas(sel,conTodas){
-  let h=conTodas?'<option value="">Todas las cajas</option>':'';
-  for(const c of db.cajas) h+=`<option value="${c.id}">${esc(c.nombre)}</option>`;
-  sel.innerHTML=h;
-}
-function llenarSelects(){
-  const prev=$('fCaja').value;
-  llenarSelectCajas($('fCaja'));
-  if(prev) $('fCaja').value=prev;
-  const prevF=$('filtCaja').value;
-  llenarSelectCajas($('filtCaja'),true);
-  if(prevF) $('filtCaja').value=prevF;
-}
-function render(){
-  renderRegistro(); renderDetalle(); renderLibro(); renderMeses(); renderSaldos();
-}
-
-/* ================= INIT ================= */
-$('fFecha').value=hoy();
-setTipo('Ingreso');
-iniciar();
-</script>
-</body>
-</html>
