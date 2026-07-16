@@ -217,6 +217,21 @@ tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
     <button class="waBtn" onclick="enviarWA()">📱 Enviar saldos por WhatsApp</button>
     <button class="copyBtn" onclick="copiarWA()">Copiar mensaje</button>
   </section>
+  <!-- PLANILLA -->
+  <section class="pane" id="p-sheet">
+    <h2 class="sec">Planilla (Google Sheet)</h2>
+    <div class="card" id="sheetLock">
+      <p style="font-size:.85rem;color:var(--gris);margin-bottom:10px">🔒 Acceso restringido. Ingresá la clave para abrir la planilla con todos los datos de la caja.</p>
+      <label class="f">Clave</label>
+      <input type="password" id="sheetClave" inputmode="numeric" placeholder="••••" onkeydown="if(event.key==='Enter')desbloquearSheet()">
+      <button class="agregar" style="margin-top:12px" onclick="desbloquearSheet()">🔓 Desbloquear</button>
+    </div>
+    <div class="card" id="sheetOpen" style="display:none">
+      <p style="font-size:.85rem;color:var(--gris);margin-bottom:12px">✅ Acceso habilitado. La planilla es el respaldo oficial de la caja: ahí está todo el historial y podés descargarla como Excel.</p>
+      <button class="agregar" onclick="abrirSheet()">📗 Abrir planilla</button>
+      <button class="copyBtn" style="margin-top:8px" onclick="bloquearSheet()">🔒 Volver a bloquear</button>
+    </div>
+  </section>
 </main>
 
 <nav>
@@ -225,6 +240,7 @@ tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
   <button onclick="tab('detalle',this)"><span class="ic">📊</span>Detalle</button>
   <button onclick="tab('libro',this)"><span class="ic">📚</span>Libro</button>
   <button onclick="tab('saldos',this)"><span class="ic">💰</span>Saldos</button>
+  <button onclick="tab('sheet',this)"><span class="ic">📗</span>Planilla</button>
 </nav>
 
 <div class="toast" id="toast"></div>
@@ -324,6 +340,7 @@ async function apiPost(payload){
   return d;
 }
 function aplicarDatos(d){
+  db.sheetUrl = d.sheetUrl||db.sheetUrl||'';
   db.cajas = d.cajas||[];
   db.movs  = (d.movs||[]).map(m=>({...m, fecha:normFecha(m.fecha)}));
   try{ localStorage.setItem(CACHE_KEY, JSON.stringify({t:Date.now(), db})); }catch(e){}
@@ -411,6 +428,32 @@ function tab(n,btn){
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
   $('p-'+n).classList.add('on'); btn.classList.add('on');
   render();
+}
+
+/* ================= PLANILLA (clave) ================= */
+const SHEET_CLAVE='1234';
+let sheetDesbloqueado=false;
+function desbloquearSheet(){
+  if($('sheetClave').value===SHEET_CLAVE){
+    sheetDesbloqueado=true;
+    $('sheetClave').value='';
+    $('sheetLock').style.display='none';
+    $('sheetOpen').style.display='';
+    toast('🔓 Acceso habilitado');
+  }else{
+    $('sheetClave').value='';
+    toast('⚠️ Clave incorrecta');
+  }
+}
+function bloquearSheet(){
+  sheetDesbloqueado=false;
+  $('sheetLock').style.display='';
+  $('sheetOpen').style.display='none';
+}
+function abrirSheet(){
+  if(!sheetDesbloqueado) return;
+  if(!db.sheetUrl) return toast('⚠️ Falta actualizar el Apps Script a la v3');
+  window.open(db.sheetUrl,'_blank');
 }
 
 /* ================= COMPROBANTES (foto) ================= */
