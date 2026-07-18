@@ -129,6 +129,23 @@ tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
 .btnGhost{padding:10px 14px;border:1.5px solid var(--borde);border-radius:10px;background:#fff;color:var(--tinta);font-family:inherit;font-weight:700;font-size:.85rem;cursor:pointer}
 .cfgRow{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 
+/* ---------- PENDIENTES ---------- */
+.pendTot{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.pendTot .pt{background:var(--papel);border:1px solid var(--borde);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.pendTot .pt span{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--gris)}
+.pendTot .pt b{font-size:1.25rem}
+.pendTot .cobrar b{color:var(--verde)}
+.pendTot .pagar b{color:var(--rojoNeg)}
+.pendItem{display:flex;gap:10px;align-items:center;background:var(--papel);border:1px solid var(--borde);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.pendItem .info{flex:1;min-width:0}
+.pendItem .det{font-weight:700;font-size:.88rem}
+.pendItem .sub{font-size:.7rem;color:var(--gris);margin-top:2px}
+.pendItem .monto{font-weight:900;font-size:.95rem}
+.pendItem button{background:none;border:none;font-size:1.05rem;cursor:pointer;padding:2px 4px}
+.rubroTag{display:inline-block;padding:1px 7px;border-radius:20px;font-size:.62rem;font-weight:700;background:#EFE7D4;color:#8A6D1F;border:1px solid #E0D2AC}
+.modoBtn.on{background:var(--negro);border-color:var(--negro);color:var(--dorado)}
+input[type="search"]{width:100%}
+
 /* ---------- COMPROBANTE ---------- */
 .fotoPrev{display:flex;flex-direction:column;gap:8px}
 .fotoPrev img{width:100%;max-height:220px;object-fit:contain;border-radius:10px;border:1.5px solid var(--borde);background:#fff}
@@ -177,6 +194,7 @@ tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
   <div class="estado sync" id="estado"><span class="pt"></span><span id="estadoTxt">Conectando</span></div>
   </div>
   <div class="hbtns">
+    <button class="hbtn" onclick="accesoPlanilla()" title="Planilla">📗</button>
     <button class="hbtn" id="btnRef" onclick="refrescar(true)" title="Actualizar"><span class="icref">🔄</span></button>
     <button class="hbtn" onclick="abrirConfig()" title="Configuración">⚙️</button>
   </div>
@@ -186,7 +204,11 @@ tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
   <!-- CARGA -->
   <section class="pane on" id="p-carga">
     <h2 class="sec">Carga de movimientos</h2>
-    <div class="card">
+    <div class="tipoRow" style="margin-bottom:12px">
+      <button class="tipoBtn modoBtn on" id="modoMov" onclick="setModo('mov')">💵 Movimiento</button>
+      <button class="tipoBtn modoBtn" id="modoTrf" onclick="setModo('trf')">🔁 Transferencia</button>
+    </div>
+    <div class="card" id="cardMov">
       <label class="f">Fecha</label>
       <input type="date" id="fFecha">
       <label class="f">Caja</label>
@@ -196,6 +218,8 @@ tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
         <button class="tipoBtn ing" id="btnIng" onclick="setTipo('Ingreso')">▲ Ingreso</button>
         <button class="tipoBtn egr" id="btnEgr" onclick="setTipo('Egreso')">▼ Egreso</button>
       </div>
+      <label class="f">Rubro</label>
+      <select id="fRubro"></select>
       <label class="f">Detalle</label>
       <input type="text" id="fDetalle" placeholder="Ej: Cuota mensual U13, viaje a Necochea...">
       <label class="f">Monto ($)</label>
@@ -207,11 +231,25 @@ tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
       </div>
       <button class="agregar" id="btnAgregar" onclick="agregar()">＋ Agregar movimiento</button>
     </div>
+    <div class="card" id="cardTrf" style="display:none">
+      <label class="f">Fecha</label>
+      <input type="date" id="tFecha">
+      <label class="f">Desde la caja</label>
+      <select id="tOrigen"></select>
+      <label class="f">Hacia la caja</label>
+      <select id="tDestino"></select>
+      <label class="f">Detalle (opcional)</label>
+      <input type="text" id="tDetalle" placeholder="Ej: rendición efectivo del buffet">
+      <label class="f">Monto ($)</label>
+      <input type="number" id="tMonto" inputmode="numeric" placeholder="0">
+      <button class="agregar" id="btnTransferir" onclick="transferir()">🔁 Transferir</button>
+    </div>
   </section>
 
   <!-- REGISTRO -->
   <section class="pane" id="p-registro">
     <h2 class="sec">Registro de movimientos</h2>
+    <input type="search" id="buscador" placeholder="🔍 Buscar por detalle, rubro, monto..." oninput="render()" style="margin-bottom:8px">
     <div class="filtros">
       <select id="filtCaja" onchange="render()"></select>
       <select id="filtTipo" onchange="render()">
@@ -232,8 +270,13 @@ tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
   <section class="pane" id="p-libro">
     <h2 class="sec">Libro de caja — saldos por caja</h2>
     <div id="tLibro"></div>
+    <h2 class="sec" style="margin-top:20px">Por rubro</h2>
+    <div id="tRubros"></div>
+    <h2 class="sec" style="margin-top:20px">Evolución</h2>
+    <div class="card" id="tGraficos" style="padding:10px"></div>
     <h2 class="sec" style="margin-top:20px">Resumen mensual</h2>
     <div class="meses" id="tMeses"></div>
+    <button class="agregar" style="margin-top:16px" onclick="cierreMensual()">🖨️ Cierre mensual (PDF)</button>
   </section>
 
   <!-- SALDOS -->
@@ -243,20 +286,15 @@ tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
     <button class="waBtn" onclick="enviarWA()">📱 Enviar saldos por WhatsApp</button>
     <button class="copyBtn" onclick="copiarWA()">Copiar mensaje</button>
   </section>
-  <!-- PLANILLA -->
-  <section class="pane" id="p-sheet">
-    <h2 class="sec">Planilla (Google Sheet)</h2>
-    <div class="card" id="sheetLock">
-      <p style="font-size:.85rem;color:var(--gris);margin-bottom:10px">🔒 Acceso restringido. Ingresá la clave para abrir la planilla con todos los datos de la caja.</p>
-      <label class="f">Clave</label>
-      <input type="password" id="sheetClave" inputmode="numeric" placeholder="••••" onkeydown="if(event.key==='Enter')desbloquearSheet()">
-      <button class="agregar" style="margin-top:12px" onclick="desbloquearSheet()">🔓 Desbloquear</button>
+  <!-- PENDIENTES -->
+  <section class="pane" id="p-pend">
+    <h2 class="sec">Deudas y compromisos</h2>
+    <div class="pendTot">
+      <div class="pt cobrar"><span>A cobrar</span><b class="num" id="totCobrar">$0</b></div>
+      <div class="pt pagar"><span>A pagar</span><b class="num" id="totPagar">$0</b></div>
     </div>
-    <div class="card" id="sheetOpen" style="display:none">
-      <p style="font-size:.85rem;color:var(--gris);margin-bottom:12px">✅ Acceso habilitado. La planilla es el respaldo oficial de la caja: ahí está todo el historial y podés descargarla como Excel.</p>
-      <button class="agregar" onclick="abrirSheet()">📗 Abrir planilla</button>
-      <button class="copyBtn" style="margin-top:8px" onclick="bloquearSheet()">🔒 Volver a bloquear</button>
-    </div>
+    <button class="agregar" style="margin-bottom:12px" onclick="abrirNuevoPend()">＋ Nuevo pendiente</button>
+    <div id="tPend"></div>
   </section>
 </main>
 
@@ -266,7 +304,7 @@ tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
   <button onclick="tab('detalle',this)"><span class="ic">📊</span>Detalle</button>
   <button onclick="tab('libro',this)"><span class="ic">📚</span>Libro</button>
   <button onclick="tab('saldos',this)"><span class="ic">💰</span>Saldos</button>
-  <button onclick="tab('sheet',this)"><span class="ic">📗</span>Planilla</button>
+  <button onclick="tab('pend',this)"><span class="ic">🧾</span>Deudas</button>
 </nav>
 
 <div class="toast" id="toast"></div>
@@ -275,7 +313,16 @@ tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
 <div class="modalBg" id="mConfig">
   <div class="modal">
     <h3>⚙️ Configuración</h3>
-    <h2 class="sec" style="margin-top:14px">Cajas</h2>
+    <h2 class="sec" style="margin-top:14px">Tu nombre</h2>
+    <div class="cfgRow" style="margin-top:0">
+      <button class="btnGhost" style="flex:1" onclick="cambiarUsuario()" id="btnUsuario">👤 —</button>
+    </div>
+    <h2 class="sec" style="margin-top:20px">Rubros</h2>
+    <div id="cfgRubros"></div>
+    <div class="cfgRow">
+      <button class="btnSec" onclick="nuevoRubro()">＋ Agregar rubro</button>
+    </div>
+    <h2 class="sec" style="margin-top:20px">Cajas</h2>
     <div id="cfgLista"></div>
     <div class="cfgRow">
       <button class="btnSec" onclick="nuevaCaja()">＋ Agregar caja</button>
@@ -294,6 +341,39 @@ tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
   </div>
 </div>
 
+<!-- MODAL USUARIO -->
+<div class="modalBg" id="mUsuario">
+  <div class="modal">
+    <h3>👋 ¿Quién sos?</h3>
+    <p style="font-size:.82rem;color:var(--gris);margin-bottom:4px">Tu nombre queda registrado en cada movimiento que cargues, para que la caja tenga trazabilidad.</p>
+    <label class="f">Tu nombre</label>
+    <input type="text" id="uNombre" placeholder="Ej: Gastón" onkeydown="if(event.key==='Enter')guardarUsuario()">
+    <div class="cfgRow" style="margin-top:16px">
+      <button class="btnSec" style="flex:1" onclick="guardarUsuario()">Listo</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PENDIENTE -->
+<div class="modalBg" id="mPend">
+  <div class="modal">
+    <h3>🧾 Nuevo pendiente</h3>
+    <label class="f">Tipo</label>
+    <div class="tipoRow">
+      <button class="tipoBtn ing" id="pBtnCobrar" onclick="setPendTipo('Cobrar')">💰 A cobrar</button>
+      <button class="tipoBtn egr" id="pBtnPagar" onclick="setPendTipo('Pagar')">💸 A pagar</button>
+    </div>
+    <label class="f">Detalle</label>
+    <input type="text" id="pDetalle" placeholder="Ej: cuota LED marzo, viaje flia. Pérez">
+    <label class="f">Monto ($)</label>
+    <input type="number" id="pMonto" inputmode="numeric" placeholder="0">
+    <div class="cfgRow" style="margin-top:16px">
+      <button class="btnSec" style="flex:1" onclick="guardarPend()">Guardar</button>
+      <button class="btnGhost" onclick="$('mPend').classList.remove('on')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL EDITAR MOV -->
 <div class="modalBg" id="mEdit">
   <div class="modal">
@@ -303,6 +383,7 @@ tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
     <label class="f">Tipo</label>
     <select id="eTipo"><option>Ingreso</option><option>Egreso</option></select>
     <label class="f">Detalle</label><input type="text" id="eDetalle">
+    <label class="f">Rubro</label><select id="eRubro"></select>
     <label class="f">Monto ($)</label><input type="number" id="eMonto" inputmode="numeric">
     <label class="f">📎 Comprobante</label>
     <input type="file" id="eFoto" accept="image/*" style="display:none" onchange="fotoElegida(event,'e')">
@@ -324,7 +405,8 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx5OQq-ps6j3pYJZXCbU
 const CACHE_KEY = 'caja_sc_cache_v2';
 const REFRESH_MS = 60000; // auto-actualiza cada 60 segundos
 
-let db = { cajas: [], movs: [] };
+let db = { cajas: [], movs: [], rubros: [], pendientes: [] };
+let usuario = localStorage.getItem('caja_sc_usuario') || '';
 let editId = null;
 let ocupado = false;
 
@@ -368,6 +450,8 @@ async function apiPost(payload){
 function aplicarDatos(d){
   db.sheetUrl = d.sheetUrl||db.sheetUrl||'';
   db.cajas = d.cajas||[];
+  db.rubros = d.rubros||[];
+  db.pendientes = d.pendientes||[];
   db.movs  = (d.movs||[]).map(m=>({...m, fecha:normFecha(m.fecha)}));
   try{ localStorage.setItem(CACHE_KEY, JSON.stringify({t:Date.now(), db})); }catch(e){}
   llenarSelects(); render();
@@ -458,28 +542,128 @@ function tab(n,btn){
 
 /* ================= PLANILLA (clave) ================= */
 const SHEET_CLAVE='1234';
-let sheetDesbloqueado=false;
-function desbloquearSheet(){
-  if($('sheetClave').value===SHEET_CLAVE){
-    sheetDesbloqueado=true;
-    $('sheetClave').value='';
-    $('sheetLock').style.display='none';
-    $('sheetOpen').style.display='';
-    toast('🔓 Acceso habilitado');
-  }else{
-    $('sheetClave').value='';
-    toast('⚠️ Clave incorrecta');
-  }
-}
-function bloquearSheet(){
-  sheetDesbloqueado=false;
-  $('sheetLock').style.display='';
-  $('sheetOpen').style.display='none';
-}
-function abrirSheet(){
-  if(!sheetDesbloqueado) return;
-  if(!db.sheetUrl) return toast('⚠️ Falta actualizar el Apps Script a la v3');
+function accesoPlanilla(){
+  const c=prompt('🔒 Clave para abrir la planilla:');
+  if(c===null) return;
+  if(c!==SHEET_CLAVE) return toast('⚠️ Clave incorrecta');
+  if(!db.sheetUrl) return toast('⚠️ Todavía no llegó el link de la planilla, probá actualizar 🔄');
   window.open(db.sheetUrl,'_blank');
+}
+
+/* ================= USUARIO ================= */
+function pedirUsuario(){ $('mUsuario').classList.add('on'); setTimeout(()=>$('uNombre').focus(),150); }
+function guardarUsuario(){
+  const n=$('uNombre').value.trim();
+  if(!n) return toast('⚠️ Escribí tu nombre');
+  usuario=n; localStorage.setItem('caja_sc_usuario',n);
+  $('mUsuario').classList.remove('on');
+  toast('👋 ¡Hola '+n+'!');
+}
+function cambiarUsuario(){
+  const n=prompt('Tu nombre:',usuario);
+  if(!n||!n.trim()) return;
+  usuario=n.trim(); localStorage.setItem('caja_sc_usuario',usuario);
+  renderConfig(); toast('✅ Nombre actualizado');
+}
+
+/* ================= MODO CARGA ================= */
+let modoCarga='mov';
+function setModo(m){
+  modoCarga=m;
+  $('modoMov').classList.toggle('on',m==='mov');
+  $('modoTrf').classList.toggle('on',m==='trf');
+  $('cardMov').style.display=m==='mov'?'':'none';
+  $('cardTrf').style.display=m==='trf'?'':'none';
+}
+async function transferir(){
+  const fecha=$('tFecha').value, o=$('tOrigen').value, d=$('tDestino').value,
+        detalle=$('tDetalle').value.trim(), monto=parseFloat($('tMonto').value);
+  if(!fecha) return toast('⚠️ Falta la fecha');
+  if(!o||!d) return toast('⚠️ Elegí las cajas');
+  if(o===d) return toast('⚠️ Las cajas tienen que ser distintas');
+  if(!monto||monto<=0) return toast('⚠️ Monto inválido');
+  const co=cajaById(o), cd=cajaById(d);
+  const extra=detalle?(' — '+detalle):'';
+  const ok=await mutar({action:'addTransfer',
+    fecha, monto, usuario,
+    origen:{cajaId:o, detalle:'Transferencia a '+cd.nombre+extra},
+    destino:{cajaId:d, detalle:'Transferencia de '+co.nombre+extra}
+  }, '🔁 Transferencia registrada');
+  if(ok){ $('tDetalle').value=''; $('tMonto').value=''; }
+}
+
+/* ================= PENDIENTES ================= */
+let pendTipo='Cobrar';
+function setPendTipo(t){
+  pendTipo=t;
+  $('pBtnCobrar').classList.toggle('on',t==='Cobrar');
+  $('pBtnPagar').classList.toggle('on',t==='Pagar');
+}
+function abrirNuevoPend(){
+  setPendTipo('Cobrar');
+  $('pDetalle').value=''; $('pMonto').value='';
+  $('mPend').classList.add('on');
+}
+async function guardarPend(){
+  const detalle=$('pDetalle').value.trim(), monto=parseFloat($('pMonto').value);
+  if(!detalle) return toast('⚠️ Falta el detalle');
+  if(!monto||monto<=0) return toast('⚠️ Monto inválido');
+  const ok=await mutar({action:'addPend', pend:{id:Date.now(), tipo:pendTipo, detalle, monto, fecha:hoy(), estado:'Pendiente', usuario}}, '✅ Pendiente guardado');
+  if(ok) $('mPend').classList.remove('on');
+}
+async function resolverPend(id){
+  const p=db.pendientes.find(x=>String(x.id)===String(id)); if(!p) return;
+  const nombres=db.cajas.map((c,i)=>(i+1)+'. '+c.nombre).join('\n');
+  const r=prompt((p.tipo==='Cobrar'?'¿En qué caja entra la plata?':'¿De qué caja sale la plata?')+'\n'+nombres+'\n\nEscribí el número:');
+  if(r===null) return;
+  const idx=parseInt(r)-1;
+  if(isNaN(idx)||!db.cajas[idx]) return toast('⚠️ Número inválido');
+  await mutar({action:'resolverPend', id:p.id, cajaId:db.cajas[idx].id, fecha:hoy(), usuario}, '✅ Resuelto y pasado a la caja');
+}
+async function borrarPend(id){
+  const p=db.pendientes.find(x=>String(x.id)===String(id)); if(!p) return;
+  if(!confirm('¿Borrar el pendiente "'+p.detalle+'"?')) return;
+  await mutar({action:'deletePend', id:p.id}, '🗑️ Borrado');
+}
+function renderPend(){
+  const pend=db.pendientes.filter(p=>p.estado!=='Resuelto');
+  let tc=0,tp=0,h='';
+  for(const p of pend){ if(p.tipo==='Cobrar') tc+=Number(p.monto); else tp+=Number(p.monto); }
+  $('totCobrar').textContent=fmt(tc);
+  $('totPagar').textContent=fmt(tp);
+  if(!pend.length){ $('tPend').innerHTML='<div class="vacio">No hay pendientes. 🧉</div>'; return; }
+  for(const p of [...pend].sort((a,b)=>Number(b.id)-Number(a.id))){
+    h+=`<div class="pendItem">
+      <div class="info">
+        <div class="det">${p.tipo==='Cobrar'?'💰':'💸'} ${esc(p.detalle)}</div>
+        <div class="sub">${p.tipo==='Cobrar'?'A cobrar':'A pagar'} · desde ${fmtFecha(p.fecha)}${p.usuario?' · por '+esc(p.usuario):''}</div>
+      </div>
+      <div class="monto num ${p.tipo==='Cobrar'?'vPos':'vNeg'}">${fmt(Number(p.monto))}</div>
+      <button title="Marcar resuelto" onclick="resolverPend('${p.id}')">✅</button>
+      <button title="Borrar" onclick="borrarPend('${p.id}')">🗑️</button>
+    </div>`;
+  }
+  $('tPend').innerHTML=h;
+}
+
+/* ================= RUBROS ================= */
+function rubroById(id){ return db.rubros.find(r=>String(r.id)===String(id)); }
+function llenarRubros(){
+  const mk=sel=>{ if(!sel) return; const prev=sel.value; sel.innerHTML=db.rubros.map(r=>`<option value="${r.id}">${esc(r.nombre)}</option>`).join(''); if(prev) sel.value=prev; };
+  mk($('fRubro')); mk($('eRubro'));
+}
+async function nuevoRubro(){
+  const n=prompt('Nombre del nuevo rubro (ej: Indumentaria):'); if(!n||!n.trim()) return;
+  const ok=await mutar({action:'addRubro', rubro:{id:'r'+Date.now(), nombre:n.trim()}}, '✅ Rubro agregado');
+  if(ok) renderConfig();
+}
+async function borrarRubro(id){
+  const r=rubroById(id); if(!r) return;
+  const usados=db.movs.filter(m=>String(m.rubro)===String(id)).length;
+  if(usados>0) return alert('No se puede borrar "'+r.nombre+'": tiene '+usados+' movimiento(s).');
+  if(!confirm('¿Borrar el rubro "'+r.nombre+'"?')) return;
+  const ok=await mutar({action:'deleteRubro', id:r.id}, '🗑️ Rubro borrado');
+  if(ok) renderConfig();
 }
 
 /* ================= COMPROBANTES (foto) ================= */
@@ -536,7 +720,7 @@ async function agregar(){
   if(!cajaId) return toast('⚠️ Elegí la caja');
   if(!detalle) return toast('⚠️ Falta el detalle');
   if(!monto||monto<=0) return toast('⚠️ Monto inválido');
-  const payload={action:'addMov', mov:{id:Date.now(), fecha, cajaId, tipo:tipoSel, detalle, monto}};
+  const payload={action:'addMov', mov:{id:Date.now(), fecha, cajaId, tipo:tipoSel, detalle, monto, usuario, rubro:$('fRubro').value||''}};
   if(fotoNueva.f) payload.foto={base64:fotoNueva.f};
   const ok=await mutar(payload, fotoNueva.f?'✅ Movimiento y comprobante guardados':'✅ Movimiento agregado');
   if(ok){ $('fDetalle').value=''; $('fMonto').value=''; fotoNueva.f=null; renderFotoZona('f'); }
@@ -544,18 +728,23 @@ async function agregar(){
 
 /* ================= REGISTRO ================= */
 function renderRegistro(){
-  const fc=$('filtCaja').value, ft=$('filtTipo').value;
+  const fc=$('filtCaja').value, ft=$('filtTipo').value, q=($('buscador').value||'').toLowerCase().trim();
   let ms=movsOrdenados().reverse();
   if(fc) ms=ms.filter(m=>String(m.cajaId)===fc);
   if(ft) ms=ms.filter(m=>m.tipo===ft);
-  if(!ms.length){ $('tReg').innerHTML='<div class="vacio">Sin movimientos todavía.<br>Cargá el primero desde la pestaña 📝 Carga.</div>'; return; }
-  let h='<div class="twrap"><table><thead><tr><th>Fecha</th><th>Caja</th><th>Tipo</th><th>Detalle</th><th class="r">Monto</th><th></th></tr></thead><tbody>';
+  if(q) ms=ms.filter(m=>{
+    const r=rubroById(m.rubro), c=cajaById(m.cajaId);
+    return (m.detalle+' '+(r?r.nombre:'')+' '+(c?c.nombre:'')+' '+(m.usuario||'')+' '+m.monto).toLowerCase().includes(q);
+  });
+  if(!ms.length){ $('tReg').innerHTML='<div class="vacio">'+(q?'Nada que coincida con la búsqueda 🔍':'Sin movimientos todavía.<br>Cargá el primero desde la pestaña 📝 Carga.')+'</div>'; return; }
+  let h='<div class="twrap"><table><thead><tr><th>Fecha</th><th>Caja</th><th>Tipo</th><th>Detalle</th><th class="r">Monto</th><th>Por</th><th></th></tr></thead><tbody>';
   for(const m of ms){
-    const c=cajaById(m.cajaId);
+    const c=cajaById(m.cajaId), r=rubroById(m.rubro);
     h+=`<tr><td class="num">${fmtFecha(m.fecha)}</td><td>${c?esc(c.nombre):'—'}</td>
       <td><span class="tag ${m.tipo==='Ingreso'?'ing':'egr'}">${m.tipo}</span></td>
-      <td style="white-space:normal;min-width:130px">${esc(m.detalle)}${m.comprobante?` <a href="${esc(m.comprobante)}" target="_blank" title="Ver comprobante">📎</a>`:''}</td>
+      <td style="white-space:normal;min-width:150px">${esc(m.detalle)}${m.comprobante?` <a href="${esc(m.comprobante)}" target="_blank" title="Ver comprobante">📎</a>`:''}${r?` <span class="rubroTag">${esc(r.nombre)}</span>`:''}</td>
       <td class="r num ${m.tipo==='Ingreso'?'vPos':'vNeg'}">${fmt(Number(m.monto))}</td>
+      <td style="font-size:.7rem;color:var(--gris)">${esc(m.usuario||'—')}</td>
       <td class="rowBtns"><button onclick="abrirEdit('${m.id}')">✏️</button><button onclick="borrar('${m.id}')">🗑️</button></td></tr>`;
   }
   $('tReg').innerHTML=h+'</tbody></table></div>';
@@ -572,6 +761,7 @@ function abrirEdit(id){
   llenarSelectCajas($('eCaja'));
   $('eFecha').value=m.fecha; $('eCaja').value=String(m.cajaId); $('eTipo').value=m.tipo;
   $('eDetalle').value=m.detalle; $('eMonto').value=m.monto;
+  llenarRubros(); if(m.rubro) $('eRubro').value=String(m.rubro);
   fotoNueva.e=null; renderFotoZona('e', m.comprobante||'');
   $('mEdit').classList.add('on');
 }
@@ -583,7 +773,7 @@ async function guardarEdit(){
   const payload={action:'updateMov', mov:{
     id:m.id, fecha:$('eFecha').value, cajaId:$('eCaja').value,
     tipo:$('eTipo').value, detalle:$('eDetalle').value.trim(), monto,
-    comprobante:m.comprobante||''
+    comprobante:m.comprobante||'', usuario:m.usuario||'', rubro:$('eRubro').value||''
   }};
   if(fotoNueva.e) payload.foto={base64:fotoNueva.e};
   const ok=await mutar(payload, '✅ Guardado');
@@ -631,6 +821,136 @@ function renderLibro(){
   }
   h+=`</tbody><tfoot><tr><td>TOTAL</td><td class="r num">${fmt(ti)}</td><td class="r num">${fmt(te)}</td><td class="r num">${fmt(ti-te)}</td></tr></tfoot></table></div>`;
   $('tLibro').innerHTML=h;
+  renderRubrosTabla(); renderGraficos();
+}
+function totalesPorRubro(){
+  const t={};
+  for(const m of db.movs){
+    const k=m.rubro||'_sin';
+    if(!t[k]) t[k]={ing:0,egr:0};
+    if(m.tipo==='Ingreso') t[k].ing+=Number(m.monto); else t[k].egr+=Number(m.monto);
+  }
+  return t;
+}
+function renderRubrosTabla(){
+  const t=totalesPorRubro(), keys=Object.keys(t);
+  if(!keys.length){ $('tRubros').innerHTML='<div class="vacio">Sin datos por rubro todavía.</div>'; return; }
+  let h='<div class="twrap"><table><thead><tr><th>Rubro</th><th class="r">Ingresos</th><th class="r">Egresos</th><th class="r">Neto</th></tr></thead><tbody>';
+  const filas=keys.map(k=>({nombre:k==='_sin'?'(sin rubro)':(rubroById(k)?rubroById(k).nombre:'(sin rubro)'), ...t[k]}));
+  filas.sort((a,b)=>(b.ing+b.egr)-(a.ing+a.egr));
+  for(const f of filas){
+    const s=f.ing-f.egr;
+    h+=`<tr><td><b>${esc(f.nombre)}</b></td><td class="r num vPos">${fmt(f.ing)}</td><td class="r num vNeg">${fmt(f.egr)}</td><td class="r num ${clsVal(s)}">${fmt(s)}</td></tr>`;
+  }
+  $('tRubros').innerHTML=h+'</tbody></table></div>';
+}
+function datosMensuales(){
+  const meses={};
+  for(const m of db.movs){
+    const k=String(m.fecha).slice(0,7);
+    if(!meses[k]) meses[k]={ing:0,egr:0};
+    if(m.tipo==='Ingreso') meses[k].ing+=Number(m.monto); else meses[k].egr+=Number(m.monto);
+  }
+  return meses;
+}
+function renderGraficos(){
+  const meses=datosMensuales(), keys=Object.keys(meses).sort();
+  if(keys.length<1){ $('tGraficos').innerHTML='<div style="text-align:center;color:var(--gris);font-size:.85rem;padding:14px">Con movimientos de 1 o más meses acá vas a ver la evolución 📈</div>'; return; }
+  const nomC=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const W=680,H=250,PL=10,PB=36,PT=16;
+  const maxV=Math.max(...keys.map(k=>Math.max(meses[k].ing,meses[k].egr)),1);
+  // saldo acumulado
+  let acc=0; const saldos=keys.map(k=>{ acc+=meses[k].ing-meses[k].egr; return acc; });
+  const minS=Math.min(0,...saldos), maxS=Math.max(0,...saldos,1);
+  const bw=(W-PL*2)/keys.length;
+  let svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto" xmlns="http://www.w3.org/2000/svg">`;
+  keys.forEach((k,i)=>{
+    const x=PL+i*bw, g=Math.min(bw*.28,26);
+    const hi=(meses[k].ing/maxV)*(H-PB-PT), he=(meses[k].egr/maxV)*(H-PB-PT);
+    svg+=`<rect x="${x+bw/2-g-2}" y="${H-PB-hi}" width="${g}" height="${Math.max(hi,1)}" rx="3" fill="#1F8A4C"/>`;
+    svg+=`<rect x="${x+bw/2+2}" y="${H-PB-he}" width="${g}" height="${Math.max(he,1)}" rx="3" fill="#B3122B"/>`;
+    const [a,mm]=k.split('-');
+    svg+=`<text x="${x+bw/2}" y="${H-PB+16}" text-anchor="middle" font-size="11" fill="#7A7284" font-family="Archivo,sans-serif">${nomC[+mm-1]} ${a.slice(2)}</text>`;
+  });
+  // línea de saldo acumulado
+  if(keys.length>1){
+    const sy=v=>PT+(1-(v-minS)/(maxS-minS||1))*(H-PB-PT-10);
+    const pts=keys.map((k,i)=>(PL+i*bw+bw/2)+','+sy(saldos[i])).join(' ');
+    svg+=`<polyline points="${pts}" fill="none" stroke="#D9A03C" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>`;
+    keys.forEach((k,i)=>{ svg+=`<circle cx="${PL+i*bw+bw/2}" cy="${sy(saldos[i])}" r="4" fill="#D9A03C"/>`; });
+  }
+  svg+='</svg>';
+  svg+=`<div style="display:flex;gap:14px;justify-content:center;font-size:.68rem;color:var(--gris);margin-top:6px">
+    <span>🟩 Ingresos</span><span>🟥 Egresos</span><span>🟨 Saldo total</span></div>`;
+  $('tGraficos').innerHTML=svg;
+}
+
+/* ================= CIERRE MENSUAL (PDF) ================= */
+function cierreMensual(){
+  const meses=Object.keys(datosMensuales()).sort();
+  if(!meses.length) return toast('⚠️ No hay movimientos todavía');
+  const nom=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const op=meses.map((k,i)=>{const[a,mm]=k.split('-');return (i+1)+'. '+nom[+mm-1]+' '+a;}).join('\n');
+  const r=prompt('¿Qué mes cerrás?\n'+op+'\n\nEscribí el número:', String(meses.length));
+  if(r===null) return;
+  const mes=meses[parseInt(r)-1];
+  if(!mes) return toast('⚠️ Número inválido');
+  const [a,mm]=mes.split('-');
+  const ms=db.movs.filter(m=>String(m.fecha).slice(0,7)===mes).sort((x,y)=>String(x.fecha).localeCompare(String(y.fecha)));
+  const porCaja={}, porRubro={};
+  let ti=0,te=0;
+  for(const m of ms){
+    const v=Number(m.monto);
+    const ck=m.cajaId, rk=m.rubro||'_sin';
+    if(!porCaja[ck]) porCaja[ck]={ing:0,egr:0};
+    if(!porRubro[rk]) porRubro[rk]={ing:0,egr:0};
+    if(m.tipo==='Ingreso'){ porCaja[ck].ing+=v; porRubro[rk].ing+=v; ti+=v; }
+    else{ porCaja[ck].egr+=v; porRubro[rk].egr+=v; te+=v; }
+  }
+  const fila=(n,x)=>`<tr><td>${n}</td><td class="r">${fmt(x.ing)}</td><td class="r">${fmt(x.egr)}</td><td class="r"><b>${fmt(x.ing-x.egr)}</b></td></tr>`;
+  const esc2=s=>String(s).replace(/</g,'&lt;');
+  let filasMov='';
+  for(const m of ms){
+    const c=cajaById(m.cajaId), rr=rubroById(m.rubro);
+    filasMov+=`<tr><td>${fmtFecha(m.fecha)}</td><td>${c?esc2(c.nombre):''}</td><td>${m.tipo}</td><td>${esc2(m.detalle)}${rr?' <i>('+esc2(rr.nombre)+')</i>':''}</td><td class="r">${m.tipo==='Egreso'?'-':''}${fmt(Number(m.monto))}</td><td>${esc2(m.usuario||'')}</td></tr>`;
+  }
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Cierre ${nom[+mm-1]} ${a} — Caja SC Básquet</title>
+  <style>
+    body{font-family:Arial,sans-serif;color:#222;margin:28px;font-size:12px}
+    .head{display:flex;align-items:center;gap:14px;border-bottom:4px solid #C8102E;padding-bottom:12px;margin-bottom:16px}
+    .head img{height:64px}
+    h1{margin:0;font-size:19px} .sub{color:#777;font-size:11px;margin-top:2px}
+    h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid #16121A;padding-bottom:4px;margin:18px 0 8px}
+    table{width:100%;border-collapse:collapse;font-size:11px}
+    th{background:#16121A;color:#fff;padding:5px 7px;text-align:left}
+    td{padding:5px 7px;border-bottom:1px solid #ddd}
+    td.r,th.r{text-align:right}
+    .tot{background:#F4EFE3;font-weight:bold}
+    .firma{margin-top:44px;display:flex;justify-content:space-around;text-align:center;font-size:11px}
+    .firma div{border-top:1px solid #444;padding-top:5px;width:180px}
+    @media print{.noprint{display:none}}
+  </style></head><body>
+  <div class="head"><img src="escudo-icon.png" onerror="this.style.display='none'">
+    <div><h1>Cierre mensual — ${nom[+mm-1].toUpperCase()} ${a}</h1>
+    <div class="sub">Caja Subcomisión de Básquet · Club Independiente de Tandil · Emitido el ${fmtFecha(hoy())} por ${esc2(usuario||'—')}</div></div></div>
+  <h2>Resumen del mes</h2>
+  <table><tr><th>Ingresos</th><th>Egresos</th><th>Resultado</th></tr>
+  <tr class="tot"><td>${fmt(ti)}</td><td>${fmt(te)}</td><td><b>${fmt(ti-te)}</b></td></tr></table>
+  <h2>Por caja</h2>
+  <table><tr><th>Caja</th><th class="r">Ingresos</th><th class="r">Egresos</th><th class="r">Resultado</th></tr>
+  ${Object.keys(porCaja).map(k=>fila(cajaById(k)?esc2(cajaById(k).nombre):'—',porCaja[k])).join('')}</table>
+  <h2>Por rubro</h2>
+  <table><tr><th>Rubro</th><th class="r">Ingresos</th><th class="r">Egresos</th><th class="r">Resultado</th></tr>
+  ${Object.keys(porRubro).map(k=>fila(k==='_sin'?'(sin rubro)':(rubroById(k)?esc2(rubroById(k).nombre):'(sin rubro)'),porRubro[k])).join('')}</table>
+  <h2>Movimientos del mes (${ms.length})</h2>
+  <table><tr><th>Fecha</th><th>Caja</th><th>Tipo</th><th>Detalle</th><th class="r">Monto</th><th>Cargó</th></tr>${filasMov}</table>
+  <div class="firma"><div>Tesorero/a</div><div>Vicepresidente</div></div>
+  <div class="noprint" style="margin-top:26px;text-align:center">
+    <button onclick="window.print()" style="padding:12px 26px;background:#C8102E;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer">🖨️ Imprimir / Guardar como PDF</button>
+  </div>
+  </body></html>`);
+  w.document.close();
 }
 function renderMeses(){
   const meses={};
@@ -686,6 +1006,13 @@ function copiarWA(){
 function abrirConfig(){ renderConfig(); $('mConfig').classList.add('on'); }
 function cerrarConfig(){ $('mConfig').classList.remove('on'); }
 function renderConfig(){
+  $('btnUsuario').textContent='👤 '+(usuario||'Elegir nombre');
+  let hr='';
+  for(const r of db.rubros){
+    hr+=`<div class="cfgCaja"><div class="nom" style="flex:1">${esc(r.nombre)}</div>
+      <button style="background:none;border:none;font-size:1rem;cursor:pointer" onclick="borrarRubro('${r.id}')">🗑️</button></div>`;
+  }
+  $('cfgRubros').innerHTML=hr||'<div class="vacio">Sin rubros.</div>';
   let h='';
   for(const c of db.cajas){
     h+=`<div class="cfgCaja">
@@ -743,15 +1070,22 @@ function llenarSelects(){
   const prevF=$('filtCaja').value;
   llenarSelectCajas($('filtCaja'),true);
   if(prevF) $('filtCaja').value=prevF;
+  const po=$('tOrigen').value, pd=$('tDestino').value;
+  llenarSelectCajas($('tOrigen')); llenarSelectCajas($('tDestino'));
+  if(po) $('tOrigen').value=po; if(pd) $('tDestino').value=pd;
+  llenarRubros();
 }
 function render(){
-  renderRegistro(); renderDetalle(); renderLibro(); renderMeses(); renderSaldos();
+  renderRegistro(); renderDetalle(); renderLibro(); renderMeses(); renderSaldos(); renderPend(); llenarRubros();
 }
 
 /* ================= INIT ================= */
 $('fFecha').value=hoy();
+$('tFecha').value=hoy();
 setTipo('Ingreso');
+$('btnUsuario') && ($('btnUsuario').textContent='👤 '+(usuario||'—'));
 iniciar();
+if(!usuario) pedirUsuario();
 </script>
 </body>
 </html>
