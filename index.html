@@ -129,6 +129,16 @@ tfoot td{background:var(--negro)!important;color:var(--crema);font-weight:900}
 .btnGhost{padding:10px 14px;border:1.5px solid var(--borde);border-radius:10px;background:#fff;color:var(--tinta);font-family:inherit;font-weight:700;font-size:.85rem;cursor:pointer}
 .cfgRow{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 
+/* ---------- APROBACIONES ---------- */
+.tag.pen{background:#FBF3D9;color:#8A6D1F;border:1px solid #E8D591}
+.tag.rec{background:#EEE;color:#777;text-decoration:line-through}
+tr.rowPen td{background:#FCF7E3!important}
+tr.rowRec td{background:#F0EDED!important;color:#999}
+.hbtn.aprobOn{background:var(--rojo);border-color:var(--rojo2)}
+.avisoPend{background:#FBF3D9;border:1px solid #E8D591;color:#8A6D1F;border-radius:12px;padding:10px 12px;font-size:.8rem;font-weight:700;margin-bottom:10px;text-align:center}
+.btnAp{background:var(--verde2)!important;border:1px solid var(--verde)!important;border-radius:8px!important}
+.btnRe{background:var(--rojoNeg2)!important;border:1px solid var(--rojoNeg)!important;border-radius:8px!important}
+
 /* ---------- PENDIENTES ---------- */
 .pendTot{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
 .pendTot .pt{background:var(--papel);border:1px solid var(--borde);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
@@ -194,6 +204,7 @@ input[type="search"]{width:100%}
   <div class="estado sync" id="estado"><span class="pt"></span><span id="estadoTxt">Conectando</span></div>
   </div>
   <div class="hbtns">
+    <button class="hbtn" id="btnAprob" onclick="toggleAprobador()" title="Modo aprobador">🔐</button>
     <button class="hbtn" onclick="accesoPlanilla()" title="Planilla">📗</button>
     <button class="hbtn" id="btnRef" onclick="refrescar(true)" title="Actualizar"><span class="icref">🔄</span></button>
     <button class="hbtn" onclick="abrirConfig()" title="Configuración">⚙️</button>
@@ -419,7 +430,7 @@ function fmtFecha(f){ const p=normFecha(f).split('-'); return p.length===3? p[2]
 function hoy(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function toast(t){ const e=$('toast'); e.textContent=t; e.classList.add('show'); setTimeout(()=>e.classList.remove('show'),2400); }
 function cajaById(id){ return db.cajas.find(c=>String(c.id)===String(id)); }
-function movsOrdenados(){ return [...db.movs].sort((a,b)=> String(a.fecha)===String(b.fecha) ? Number(a.id)-Number(b.id) : String(a.fecha).localeCompare(String(b.fecha))); }
+function movsOrdenados(){ return [...movsContables()].sort((a,b)=> String(a.fecha)===String(b.fecha) ? Number(a.id)-Number(b.id) : String(a.fecha).localeCompare(String(b.fecha))); }
 function signo(m){ return m.tipo==='Ingreso'? Number(m.monto) : -Number(m.monto); }
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -548,6 +559,57 @@ function accesoPlanilla(){
   if(c!==SHEET_CLAVE) return toast('⚠️ Clave incorrecta');
   if(!db.sheetUrl) return toast('⚠️ Todavía no llegó el link de la planilla, probá actualizar 🔄');
   window.open(db.sheetUrl,'_blank');
+}
+
+/* ================= APROBADOR ================= */
+let aprobador=null; // {nombre, clave}
+try{ aprobador=JSON.parse(sessionStorage.getItem('caja_sc_aprob')||'null'); }catch(e){}
+function pintarAprobador(){
+  const b=$('btnAprob');
+  b.classList.toggle('aprobOn', !!aprobador);
+  b.textContent=aprobador?'🔓':'🔐';
+  b.title=aprobador?('Modo aprobador: '+aprobador.nombre):'Modo aprobador';
+}
+async function toggleAprobador(){
+  if(aprobador){
+    if(confirm('Estás como '+aprobador.nombre+' (aprobador).\n¿Salir del modo aprobador?')){
+      aprobador=null; sessionStorage.removeItem('caja_sc_aprob');
+      pintarAprobador(); render(); toast('🔐 Modo aprobador cerrado');
+    }
+    return;
+  }
+  const clave=prompt('🔐 Clave de aprobador:');
+  if(clave===null||!clave.trim()) return;
+  setEstado('sync','Verificando');
+  try{
+    const d=await apiPost({action:'loginAprobador', clave:clave.trim()});
+    aplicarDatos(d);
+    if(d.aprobador){
+      aprobador={nombre:d.aprobador, clave:clave.trim()};
+      sessionStorage.setItem('caja_sc_aprob', JSON.stringify(aprobador));
+      pintarAprobador(); render();
+      setEstado('vivo','En vivo');
+      toast('🔓 ¡Hola '+d.aprobador+'! Modo aprobador activo');
+    }else{
+      setEstado('vivo','En vivo');
+      toast('⚠️ Clave incorrecta');
+    }
+  }catch(e){
+    setEstado('off','Sin conexión');
+    toast('⚠️ No se pudo verificar');
+  }
+}
+function estadoDe(m){ return m.estado||'Aprobado'; }
+function movsContables(){ return db.movs.filter(m=>estadoDe(m)!=='Rechazado'); }
+async function aprobarMov(id){
+  if(!aprobador) return;
+  await mutar({action:'setEstado', id, estado:'Aprobado', clave:aprobador.clave, fecha:hoy()}, '✅ Aprobado');
+}
+async function rechazarMov(id){
+  if(!aprobador) return;
+  const m=db.movs.find(x=>String(x.id)===String(id));
+  if(!confirm('¿Rechazar este movimiento?\n'+(m?m.detalle+' · '+fmt(Number(m.monto)):''))) return;
+  await mutar({action:'setEstado', id, estado:'Rechazado', clave:aprobador.clave, fecha:hoy()}, '✖️ Rechazado');
 }
 
 /* ================= USUARIO ================= */
@@ -720,16 +782,16 @@ async function agregar(){
   if(!cajaId) return toast('⚠️ Elegí la caja');
   if(!detalle) return toast('⚠️ Falta el detalle');
   if(!monto||monto<=0) return toast('⚠️ Monto inválido');
-  const payload={action:'addMov', mov:{id:Date.now(), fecha, cajaId, tipo:tipoSel, detalle, monto, usuario, rubro:$('fRubro').value||''}};
+  const payload={action:'addMov', mov:{id:Date.now(), fecha, cajaId, tipo:tipoSel, detalle, monto, usuario, rubro:$('fRubro').value||'', estado:'Pendiente'}};
   if(fotoNueva.f) payload.foto={base64:fotoNueva.f};
-  const ok=await mutar(payload, fotoNueva.f?'✅ Movimiento y comprobante guardados':'✅ Movimiento agregado');
+  const ok=await mutar(payload, fotoNueva.f?'✅ Cargado con comprobante — pendiente de aprobación ⏳':'✅ Cargado — queda pendiente de aprobación ⏳');
   if(ok){ $('fDetalle').value=''; $('fMonto').value=''; fotoNueva.f=null; renderFotoZona('f'); }
 }
 
 /* ================= REGISTRO ================= */
 function renderRegistro(){
   const fc=$('filtCaja').value, ft=$('filtTipo').value, q=($('buscador').value||'').toLowerCase().trim();
-  let ms=movsOrdenados().reverse();
+  let ms=[...db.movs].sort((a,b)=> String(a.fecha)===String(b.fecha) ? Number(a.id)-Number(b.id) : String(a.fecha).localeCompare(String(b.fecha))).reverse();
   if(fc) ms=ms.filter(m=>String(m.cajaId)===fc);
   if(ft) ms=ms.filter(m=>m.tipo===ft);
   if(q) ms=ms.filter(m=>{
@@ -737,17 +799,31 @@ function renderRegistro(){
     return (m.detalle+' '+(r?r.nombre:'')+' '+(c?c.nombre:'')+' '+(m.usuario||'')+' '+m.monto).toLowerCase().includes(q);
   });
   if(!ms.length){ $('tReg').innerHTML='<div class="vacio">'+(q?'Nada que coincida con la búsqueda 🔍':'Sin movimientos todavía.<br>Cargá el primero desde la pestaña 📝 Carga.')+'</div>'; return; }
-  let h='<div class="twrap"><table><thead><tr><th>Fecha</th><th>Caja</th><th>Tipo</th><th>Detalle</th><th class="r">Monto</th><th>Por</th><th></th></tr></thead><tbody>';
+  const pend=db.movs.filter(m=>estadoDe(m)==='Pendiente');
+  let aviso='';
+  if(pend.length){
+    const suma=pend.reduce((a,m)=>a+signo(m),0);
+    aviso=`<div class="avisoPend">⏳ ${pend.length} movimiento(s) sin aprobar (${fmt(suma)} en los saldos de forma provisoria)${aprobador?'':' — se aprueban con la clave 🔐'}</div>`;
+  }
+  let h='<div class="twrap"><table><thead><tr><th>Fecha</th><th>Caja</th><th>Tipo</th><th>Estado</th><th>Detalle</th><th class="r">Monto</th><th>Por</th><th></th></tr></thead><tbody>';
   for(const m of ms){
-    const c=cajaById(m.cajaId), r=rubroById(m.rubro);
-    h+=`<tr><td class="num">${fmtFecha(m.fecha)}</td><td>${c?esc(c.nombre):'—'}</td>
+    const c=cajaById(m.cajaId), r=rubroById(m.rubro), est=estadoDe(m);
+    const badge = est==='Pendiente' ? '<span class="tag pen">⏳ Pendiente</span>'
+                : est==='Rechazado' ? '<span class="tag rec">Rechazado</span>'
+                : '<span class="tag ing">✓</span>';
+    let acciones = `<button onclick="abrirEdit('${m.id}')" title="Editar">✏️</button><button onclick="borrar('${m.id}')" title="Borrar">🗑️</button>`;
+    if(aprobador && est==='Pendiente'){
+      acciones = `<button class="btnAp" onclick="aprobarMov('${m.id}')" title="Aprobar">✔️</button><button class="btnRe" onclick="rechazarMov('${m.id}')" title="Rechazar">✖️</button> `+acciones;
+    }
+    h+=`<tr class="${est==='Pendiente'?'rowPen':(est==='Rechazado'?'rowRec':'')}"><td class="num">${fmtFecha(m.fecha)}</td><td>${c?esc(c.nombre):'—'}</td>
       <td><span class="tag ${m.tipo==='Ingreso'?'ing':'egr'}">${m.tipo}</span></td>
+      <td>${badge}${m.aprobadoPor&&est!=='Pendiente'?`<div style="font-size:.6rem;color:var(--gris)">${esc(m.aprobadoPor)}</div>`:''}</td>
       <td style="white-space:normal;min-width:150px">${esc(m.detalle)}${m.comprobante?` <a href="${esc(m.comprobante)}" target="_blank" title="Ver comprobante">📎</a>`:''}${r?` <span class="rubroTag">${esc(r.nombre)}</span>`:''}</td>
       <td class="r num ${m.tipo==='Ingreso'?'vPos':'vNeg'}">${fmt(Number(m.monto))}</td>
       <td style="font-size:.7rem;color:var(--gris)">${esc(m.usuario||'—')}</td>
-      <td class="rowBtns"><button onclick="abrirEdit('${m.id}')">✏️</button><button onclick="borrar('${m.id}')">🗑️</button></td></tr>`;
+      <td class="rowBtns" style="white-space:nowrap">${acciones}</td></tr>`;
   }
-  $('tReg').innerHTML=h+'</tbody></table></div>';
+  $('tReg').innerHTML=aviso+h+'</tbody></table></div>';
 }
 async function borrar(id){
   const m=db.movs.find(x=>String(x.id)===String(id));
@@ -791,7 +867,7 @@ function renderDetalle(){
   for(const m of ms){
     const s=signo(m); saldo+=s;
     if(acum[m.cajaId]!==undefined) acum[m.cajaId]+=s;
-    h+=`<tr><td class="num">${fmtFecha(m.fecha)}</td><td>${cajaById(m.cajaId)?esc(cajaById(m.cajaId).nombre):'—'}</td>
+    h+=`<tr class="${estadoDe(m)==='Pendiente'?'rowPen':''}"><td class="num">${fmtFecha(m.fecha)}${estadoDe(m)==='Pendiente'?' ⏳':''}</td><td>${cajaById(m.cajaId)?esc(cajaById(m.cajaId).nombre):'—'}</td>
       <td><span class="tag ${m.tipo==='Ingreso'?'ing':'egr'}">${m.tipo}</span></td>
       <td style="white-space:normal;min-width:120px">${esc(m.detalle)}${m.comprobante?` <a href="${esc(m.comprobante)}" target="_blank" title="Ver comprobante">📎</a>`:''}</td>
       <td class="r num ${m.tipo==='Ingreso'?'vPos':'vNeg'}">${fmt(Number(m.monto))}</td>
@@ -805,7 +881,7 @@ function renderDetalle(){
 /* ================= LIBRO + MENSUAL ================= */
 function totalesPorCaja(){
   const t={}; db.cajas.forEach(c=>t[c.id]={ing:0,egr:0});
-  for(const m of db.movs){
+  for(const m of movsContables()){
     if(!t[m.cajaId]) continue;
     if(m.tipo==='Ingreso') t[m.cajaId].ing+=Number(m.monto); else t[m.cajaId].egr+=Number(m.monto);
   }
@@ -825,7 +901,7 @@ function renderLibro(){
 }
 function totalesPorRubro(){
   const t={};
-  for(const m of db.movs){
+  for(const m of movsContables()){
     const k=m.rubro||'_sin';
     if(!t[k]) t[k]={ing:0,egr:0};
     if(m.tipo==='Ingreso') t[k].ing+=Number(m.monto); else t[k].egr+=Number(m.monto);
@@ -846,7 +922,7 @@ function renderRubrosTabla(){
 }
 function datosMensuales(){
   const meses={};
-  for(const m of db.movs){
+  for(const m of movsContables()){
     const k=String(m.fecha).slice(0,7);
     if(!meses[k]) meses[k]={ing:0,egr:0};
     if(m.tipo==='Ingreso') meses[k].ing+=Number(m.monto); else meses[k].egr+=Number(m.monto);
@@ -954,7 +1030,7 @@ function cierreMensual(){
 }
 function renderMeses(){
   const meses={};
-  for(const m of db.movs){
+  for(const m of movsContables()){
     const k=String(m.fecha).slice(0,7);
     if(!meses[k]) meses[k]={ing:0,egr:0};
     if(m.tipo==='Ingreso') meses[k].ing+=Number(m.monto); else meses[k].egr+=Number(m.monto);
@@ -976,7 +1052,12 @@ function renderMeses(){
 /* ================= SALDOS ================= */
 function renderSaldos(){
   const t=totalesPorCaja();
+  const pend=db.movs.filter(m=>estadoDe(m)==='Pendiente');
   let total=0, h='';
+  if(pend.length){
+    const suma=pend.reduce((a,m)=>a+signo(m),0);
+    h+=`<div class="avisoPend" style="grid-column:1/-1">⏳ Incluye ${pend.length} movimiento(s) sin aprobar por ${fmt(suma)}</div>`;
+  }
   for(const c of db.cajas){
     const x=t[c.id], s=x.ing-x.egr; total+=s;
     h+=`<div class="cajaCard"><h3>${esc(c.nombre)}</h3>
@@ -994,7 +1075,9 @@ function msgWA(){
     const s=t[c.id].ing-t[c.id].egr; total+=s;
     lineas.push(`${c.corto||c.nombre}: ${fmt(s)}`);
   }
-  return `*SALDOS - Subcomisión Básquet*\n${lineas.join('\n')}\n——————\n*TOTAL SC: ${fmt(total)}*`;
+  const pend=db.movs.filter(m=>estadoDe(m)==='Pendiente');
+  const nota=pend.length?`\n⏳ _Incluye ${pend.length} mov. sin aprobar (${fmt(pend.reduce((a,m)=>a+signo(m),0))})_`:'';
+  return `*SALDOS - Subcomisión Básquet*\n${lineas.join('\n')}\n——————\n*TOTAL SC: ${fmt(total)}*${nota}`;
 }
 function enviarWA(){ window.open('https://wa.me/?text='+encodeURIComponent(msgWA()),'_blank'); }
 function copiarWA(){
@@ -1084,6 +1167,7 @@ $('fFecha').value=hoy();
 $('tFecha').value=hoy();
 setTipo('Ingreso');
 $('btnUsuario') && ($('btnUsuario').textContent='👤 '+(usuario||'—'));
+pintarAprobador();
 iniciar();
 if(!usuario) pedirUsuario();
 </script>
