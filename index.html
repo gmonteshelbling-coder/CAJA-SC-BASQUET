@@ -381,9 +381,16 @@ input[type="search"]{width:100%}
       <button class="tipoBtn egr" id="pBtnPagar" onclick="setPendTipo('Pagar')">💸 A pagar</button>
     </div>
     <label class="f">Detalle</label>
-    <input type="text" id="pDetalle" placeholder="Ej: cuota LED marzo, viaje flia. Pérez">
-    <label class="f">Monto ($)</label>
+    <input type="text" id="pDetalle" placeholder="Ej: pantalla LED, viaje flia. Pérez">
+    <label class="f">Monto TOTAL ($)</label>
     <input type="number" id="pMonto" inputmode="numeric" placeholder="0">
+    <label class="f">Cantidad de cuotas</label>
+    <input type="number" id="pCuotas" inputmode="numeric" value="1" min="1">
+    <label class="f">Primer vencimiento (opcional)</label>
+    <input type="date" id="pVenc">
+    <label class="f">📎 Comprobante (opcional)</label>
+    <input type="file" id="pFoto" accept="image/*" style="display:none" onchange="fotoElegida(event,'p')">
+    <div id="pFotoZona"></div>
     <div class="cfgRow" style="margin-top:16px">
       <button class="btnSec" style="flex:1" onclick="guardarPend()">Guardar</button>
       <button class="btnGhost" onclick="$('mPend').classList.remove('on')">Cancelar</button>
@@ -670,44 +677,80 @@ function setPendTipo(t){
 function abrirNuevoPend(){
   setPendTipo('Cobrar');
   $('pDetalle').value=''; $('pMonto').value='';
+  $('pCuotas').value='1'; $('pVenc').value='';
+  fotoNueva.p=null; renderFotoZona('p');
   $('mPend').classList.add('on');
 }
 async function guardarPend(){
   const detalle=$('pDetalle').value.trim(), monto=parseFloat($('pMonto').value);
+  const cuotas=Math.max(1, parseInt($('pCuotas').value)||1);
   if(!detalle) return toast('⚠️ Falta el detalle');
   if(!monto||monto<=0) return toast('⚠️ Monto inválido');
-  const ok=await mutar({action:'addPend', pend:{id:Date.now(), tipo:pendTipo, detalle, monto, fecha:hoy(), estado:'Pendiente', usuario}}, '✅ Pendiente guardado');
-  if(ok) $('mPend').classList.remove('on');
+  const payload={action:'addPend', pend:{id:Date.now(), tipo:pendTipo, detalle, monto, fecha:hoy(),
+    estado:'Pendiente', usuario, cuotas, vencimiento:$('pVenc').value||''}};
+  if(fotoNueva.p) payload.foto={base64:fotoNueva.p};
+  const ok=await mutar(payload, '✅ Pendiente guardado');
+  if(ok){ fotoNueva.p=null; $('mPend').classList.remove('on'); }
 }
 async function resolverPend(id){
   const p=db.pendientes.find(x=>String(x.id)===String(id)); if(!p) return;
+  const cuotas=Number(p.cuotas)||1, pagadas=Number(p.cuotasPagadas)||0;
+  const montoCuota=Math.round((Number(p.monto)/cuotas)*100)/100;
+  const quePasa=cuotas>1?('Cuota '+(pagadas+1)+' de '+cuotas+' por '+fmt(montoCuota)):('por '+fmt(Number(p.monto)));
   const nombres=db.cajas.map((c,i)=>(i+1)+'. '+c.nombre).join('\n');
-  const r=prompt((p.tipo==='Cobrar'?'¿En qué caja entra la plata?':'¿De qué caja sale la plata?')+'\n'+nombres+'\n\nEscribí el número:');
+  const r=prompt((p.tipo==='Cobrar'?'💰 Cobrar ':'💸 Pagar ')+quePasa+'\n'+(p.tipo==='Cobrar'?'¿En qué caja entra?':'¿De qué caja sale?')+'\n'+nombres+'\n\nEscribí el número:');
   if(r===null) return;
   const idx=parseInt(r)-1;
   if(isNaN(idx)||!db.cajas[idx]) return toast('⚠️ Número inválido');
-  await mutar({action:'resolverPend', id:p.id, cajaId:db.cajas[idx].id, fecha:hoy(), usuario}, '✅ Resuelto y pasado a la caja');
+  await mutar({action:'resolverPend', id:p.id, cajaId:db.cajas[idx].id, fecha:hoy(), usuario},
+    cuotas>1&&pagadas+1<cuotas?'✅ Cuota registrada (queda pendiente de aprobación)':'✅ Resuelto y pasado a la caja');
 }
 async function borrarPend(id){
   const p=db.pendientes.find(x=>String(x.id)===String(id)); if(!p) return;
   if(!confirm('¿Borrar el pendiente "'+p.detalle+'"?')) return;
   await mutar({action:'deletePend', id:p.id}, '🗑️ Borrado');
 }
+function restanteDe(p){
+  const cuotas=Number(p.cuotas)||1, pagadas=Number(p.cuotasPagadas)||0;
+  const montoCuota=Number(p.monto)/cuotas;
+  return Math.round((Number(p.monto)-pagadas*montoCuota)*100)/100;
+}
+function estadoVenc(p){
+  if(!p.vencimiento) return null;
+  const v=normFecha(p.vencimiento), h=hoy();
+  if(v<h) return 'vencida';
+  const dv=new Date(v), dh=new Date(h);
+  const dias=Math.round((dv-dh)/86400000);
+  return dias<=7?'pronto':null;
+}
 function renderPend(){
   const pend=db.pendientes.filter(p=>p.estado!=='Resuelto');
   let tc=0,tp=0,h='';
-  for(const p of pend){ if(p.tipo==='Cobrar') tc+=Number(p.monto); else tp+=Number(p.monto); }
+  for(const p of pend){ if(p.tipo==='Cobrar') tc+=restanteDe(p); else tp+=restanteDe(p); }
   $('totCobrar').textContent=fmt(tc);
   $('totPagar').textContent=fmt(tp);
   if(!pend.length){ $('tPend').innerHTML='<div class="vacio">No hay pendientes. 🧉</div>'; return; }
-  for(const p of [...pend].sort((a,b)=>Number(b.id)-Number(a.id))){
-    h+=`<div class="pendItem">
+  const vencidas=pend.filter(p=>estadoVenc(p)==='vencida').length;
+  if(vencidas) h+=`<div class="avisoPend" style="background:#FBE7EA;border-color:#E8A5B0;color:#B3122B">🔴 ${vencidas} deuda(s) VENCIDA(S) — revisalas abajo</div>`;
+  const orden=[...pend].sort((a,b)=>{
+    const ea=estadoVenc(a)==='vencida'?0:(estadoVenc(a)==='pronto'?1:2);
+    const eb=estadoVenc(b)==='vencida'?0:(estadoVenc(b)==='pronto'?1:2);
+    return ea!==eb?ea-eb:Number(b.id)-Number(a.id);
+  });
+  for(const p of orden){
+    const cuotas=Number(p.cuotas)||1, pagadas=Number(p.cuotasPagadas)||0;
+    const ev=estadoVenc(p);
+    const badge=ev==='vencida'?'<span class="tag" style="background:#FBE7EA;color:#B3122B;border:1px solid #E8A5B0">🔴 VENCIDA</span>'
+              :ev==='pronto'?'<span class="tag pen">⏰ Vence pronto</span>':'';
+    const cuotaTxt=cuotas>1?` · cuota ${pagadas+1}/${cuotas} de ${fmt(Math.round(Number(p.monto)/cuotas*100)/100)}`:'';
+    const vencTxt=p.vencimiento?` · vence ${fmtFecha(p.vencimiento)}`:'';
+    h+=`<div class="pendItem" style="${ev==='vencida'?'border-color:#E8A5B0;background:#FDF3F5':''}">
       <div class="info">
-        <div class="det">${p.tipo==='Cobrar'?'💰':'💸'} ${esc(p.detalle)}</div>
-        <div class="sub">${p.tipo==='Cobrar'?'A cobrar':'A pagar'} · desde ${fmtFecha(p.fecha)}${p.usuario?' · por '+esc(p.usuario):''}</div>
+        <div class="det">${p.tipo==='Cobrar'?'💰':'💸'} ${esc(p.detalle)} ${badge}${p.comprobante?` <a href="${esc(p.comprobante)}" target="_blank">📎</a>`:''}</div>
+        <div class="sub">${p.tipo==='Cobrar'?'A cobrar':'A pagar'}${cuotaTxt}${vencTxt}${p.usuario?' · por '+esc(p.usuario):''}</div>
       </div>
-      <div class="monto num ${p.tipo==='Cobrar'?'vPos':'vNeg'}">${fmt(Number(p.monto))}</div>
-      <button title="Marcar resuelto" onclick="resolverPend('${p.id}')">✅</button>
+      <div class="monto num ${p.tipo==='Cobrar'?'vPos':'vNeg'}">${fmt(restanteDe(p))}</div>
+      <button title="${cuotas>1?'Cobrar/pagar cuota':'Marcar resuelto'}" onclick="resolverPend('${p.id}')">✅</button>
       <button title="Borrar" onclick="borrarPend('${p.id}')">🗑️</button>
     </div>`;
   }
@@ -735,7 +778,7 @@ async function borrarRubro(id){
 }
 
 /* ================= COMPROBANTES (foto) ================= */
-let fotoNueva = {f:null, e:null}; // base64 pendiente por formulario
+let fotoNueva = {f:null, e:null, p:null}; // base64 pendiente por formulario
 
 async function comprimirImagen(file){
   const url=URL.createObjectURL(file);
