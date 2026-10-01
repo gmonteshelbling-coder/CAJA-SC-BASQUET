@@ -266,7 +266,7 @@ input[type="search"]{width:100%}
   <!-- REGISTRO -->
   <section class="pane" id="p-registro">
     <h2 class="sec">Registro de movimientos</h2>
-    <input type="search" id="buscador" placeholder="🔍 Buscar por detalle, rubro, monto..." oninput="render()" style="margin-bottom:8px">
+    <input type="search" id="buscador" placeholder="🔍 Buscar por detalle, rubro, monto..." oninput="buscarDebounce()" style="margin-bottom:8px">
     <div class="filtros">
       <select id="filtCaja" onchange="render()"></select>
       <select id="filtTipo" onchange="render()">
@@ -427,7 +427,7 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx0MGF2DkZ-Pibvazgcn
 /* ============================================================ */
 
 const CACHE_KEY = 'caja_sc_cache_v2';
-const REFRESH_MS = 60000; // auto-actualiza cada 60 segundos
+const REFRESH_MS = 180000; // auto-actualiza cada 3 minutos (antes 60s)
 
 let db = { cajas: [], movs: [], rubros: [], pendientes: [] };
 let usuario = localStorage.getItem('caja_sc_usuario') || '';
@@ -471,14 +471,21 @@ async function apiPost(payload){
   if(!d.ok) throw new Error(d.error||'Respuesta inválida');
   return d;
 }
-function aplicarDatos(d){
+let huellaDatos='';
+function aplicarDatos(d, forzar){
   db.sheetUrl = d.sheetUrl||db.sheetUrl||'';
   db.cajas = d.cajas||[];
   db.rubros = d.rubros||[];
   db.pendientes = d.pendientes||[];
   db.movs  = (d.movs||[]).map(m=>({...m, fecha:normFecha(m.fecha)}));
+  // Huella rápida: si el contenido no cambió, no hace falta redibujar nada.
+  const huella = db.movs.length+'|'+db.pendientes.length+'|'+db.cajas.length+'|'+db.rubros.length+'|'
+    + db.movs.reduce((a,m)=>a+Number(m.monto||0),0) + '|'
+    + db.movs.map(m=>m.estado||'').join('').length;
+  const cambio = forzar || huella!==huellaDatos;
+  huellaDatos = huella;
   try{ localStorage.setItem(CACHE_KEY, JSON.stringify({t:Date.now(), db})); }catch(e){}
-  llenarSelects(); render();
+  if(cambio){ llenarSelects(); render(); }
 }
 
 /* ================= CARGA INICIAL ================= */
@@ -540,9 +547,11 @@ async function mutar(payload, msgOk){
   if(ocupado) return;
   ocupado=true;
   setEstado('sync','Guardando');
-  $('btnAgregar').disabled=true;
+  const btn=$('btnAgregar'), txtOrig=btn?btn.textContent:'';
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Guardando...'; }
+  const btnT=$('btnTransferir'); if(btnT) btnT.disabled=true;
   try{
-    aplicarDatos(await apiPost(payload));
+    aplicarDatos(await apiPost(payload), true);
     setEstado('vivo','En vivo');
     toast(msgOk);
     return true;
@@ -552,7 +561,8 @@ async function mutar(payload, msgOk){
     return false;
   }finally{
     ocupado=false;
-    $('btnAgregar').disabled=false;
+    if(btn){ btn.disabled=false; btn.textContent=txtOrig; }
+    if(btnT) btnT.disabled=false;
   }
 }
 
@@ -561,6 +571,7 @@ function tab(n,btn){
   document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
   $('p-'+n).classList.add('on'); btn.classList.add('on');
+  paneActual=n;
   render();
 }
 
@@ -838,6 +849,10 @@ async function agregar(){
 }
 
 /* ================= REGISTRO ================= */
+let buscarTimer=null;
+function buscarDebounce(){ clearTimeout(buscarTimer); buscarTimer=setTimeout(()=>{ regLimite=100; renderRegistro(); },300); }
+let regLimite=100; // cuántos movimientos dibuja el Registro de una
+function verMasReg(){ regLimite+=200; renderRegistro(); }
 function renderRegistro(){
   const fc=$('filtCaja').value, ft=$('filtTipo').value, q=($('buscador').value||'').toLowerCase().trim();
   let ms=[...db.movs].sort((a,b)=> String(a.fecha)===String(b.fecha) ? Number(a.id)-Number(b.id) : String(a.fecha).localeCompare(String(b.fecha))).reverse();
@@ -848,6 +863,9 @@ function renderRegistro(){
     return (m.detalle+' '+(r?r.nombre:'')+' '+(c?c.nombre:'')+' '+(m.usuario||'')+' '+m.monto).toLowerCase().includes(q);
   });
   if(!ms.length){ $('tReg').innerHTML='<div class="vacio">'+(q?'Nada que coincida con la búsqueda 🔍':'Sin movimientos todavía.<br>Cargá el primero desde la pestaña 📝 Carga.')+'</div>'; return; }
+  const totalFilas=ms.length;
+  const hayMas=totalFilas>regLimite;
+  if(hayMas) ms=ms.slice(0,regLimite);
   const pend=db.movs.filter(m=>estadoDe(m)==='Pendiente');
   let aviso='';
   if(pend.length){
@@ -872,7 +890,9 @@ function renderRegistro(){
       <td style="font-size:.7rem;color:var(--gris)">${esc(m.usuario||'—')}</td>
       <td class="rowBtns" style="white-space:nowrap">${acciones}</td></tr>`;
   }
-  $('tReg').innerHTML=aviso+h+'</tbody></table></div>';
+  let pie='';
+  if(hayMas) pie=`<button class="copyBtn" style="margin-top:10px" onclick="verMasReg()">⬇️ Ver más (mostrando ${ms.length} de ${totalFilas})</button>`;
+  $('tReg').innerHTML=aviso+h+'</tbody></table></div>'+pie;
 }
 async function borrar(id){
   const m=db.movs.find(x=>String(x.id)===String(id));
@@ -906,6 +926,8 @@ async function guardarEdit(){
 }
 
 /* ================= DETALLE Y SALDO ================= */
+let detLimite=150;
+function verMasDet(){ detLimite+=300; renderDetalle(); }
 function renderDetalle(){
   const ms=movsOrdenados();
   if(!ms.length){ $('tDet').innerHTML='<div class="vacio">Sin movimientos todavía.</div>'; return; }
@@ -913,7 +935,21 @@ function renderDetalle(){
   for(const c of db.cajas) h+=`<th class="r">${esc(c.columna)}</th>`;
   h+='</tr></thead><tbody>';
   let saldo=0; const acum={}; db.cajas.forEach(c=>acum[c.id]=0);
-  for(const m of ms){
+  // Si hay muchos movimientos, se acumulan los viejos en una fila de arranque
+  // y se dibujan solo los últimos — los saldos siguen siendo exactos.
+  let desde=0, omitidos=0;
+  if(ms.length>detLimite){
+    desde=ms.length-detLimite; omitidos=desde;
+    for(let i=0;i<desde;i++){
+      const s=signo(ms[i]); saldo+=s;
+      if(acum[ms[i].cajaId]!==undefined) acum[ms[i].cajaId]+=s;
+    }
+    let fila=`<tr style="background:#EFE7D4!important"><td colspan="5" style="font-style:italic;color:var(--gris)">· ${omitidos} movimiento(s) anteriores acumulados ·</td>
+      <td class="r num ${clsVal(saldo)}">${fmt(saldo)}</td>`;
+    for(const c of db.cajas) fila+=`<td class="r num ${clsVal(acum[c.id])}">${fmt(acum[c.id])}</td>`;
+    h+=fila+'</tr>';
+  }
+  for(const m of ms.slice(desde)){
     const s=signo(m); saldo+=s;
     if(acum[m.cajaId]!==undefined) acum[m.cajaId]+=s;
     h+=`<tr class="${estadoDe(m)==='Pendiente'?'rowPen':''}"><td class="num">${fmtFecha(m.fecha)}${estadoDe(m)==='Pendiente'?' ⏳':''}</td><td>${cajaById(m.cajaId)?esc(cajaById(m.cajaId).nombre):'—'}</td>
@@ -924,7 +960,9 @@ function renderDetalle(){
     for(const c of db.cajas) h+=`<td class="r num ${clsVal(acum[c.id])}">${fmt(acum[c.id])}</td>`;
     h+='</tr>';
   }
-  $('tDet').innerHTML=h+'</tbody></table></div>';
+  let pieD='';
+  if(omitidos>0) pieD=`<button class="copyBtn" style="margin-top:10px" onclick="verMasDet()">⬇️ Ver movimientos anteriores</button>`;
+  $('tDet').innerHTML=h+'</tbody></table></div>'+pieD;
 }
 
 /* ================= LIBRO + MENSUAL ================= */
@@ -1207,13 +1245,27 @@ function llenarSelects(){
   if(po) $('tOrigen').value=po; if(pd) $('tDestino').value=pd;
   llenarRubros();
 }
+let paneActual='carga';
+const RENDERERS={
+  registro:()=>renderRegistro(),
+  detalle:()=>renderDetalle(),
+  libro:()=>{ renderLibro(); renderMeses(); },
+  saldos:()=>renderSaldos(),
+  pend:()=>renderPend()
+};
+/* Dibuja SOLO la pestaña que se está viendo: el resto se redibuja al entrar.
+   Antes se redibujaban las 6 en cada acción, y el Detalle recalcula saldos
+   fila por fila sobre todo el historial — por eso se ponía lento. */
 function render(){
-  renderRegistro(); renderDetalle(); renderLibro(); renderMeses(); renderSaldos(); renderPend(); llenarRubros();
+  const f=RENDERERS[paneActual];
+  if(f) f();
+  llenarRubros();
 }
 
 /* ================= INIT ================= */
 $('fFecha').value=hoy();
 $('tFecha').value=hoy();
+paneActual='carga';
 setTipo('Ingreso');
 $('btnUsuario') && ($('btnUsuario').textContent='👤 '+(usuario||'—'));
 pintarAprobador();
