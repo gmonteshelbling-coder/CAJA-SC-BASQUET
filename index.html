@@ -543,19 +543,90 @@ async function iniciarReintento(){
 }
 
 /* ================= MUTACIONES (con sync) ================= */
+/* Aplica el cambio en la copia local para que la pantalla responda al instante,
+   sin esperar a que el servidor devuelva toda la caja. */
+function aplicarLocal(payload){
+  const P=payload;
+  switch(P.action){
+    case 'addMov':
+      db.movs.push({...P.mov, fecha:normFecha(P.mov.fecha), estado:'Pendiente',
+                    comprobante:P.foto?'(subiendo...)':''});
+      return true;
+    case 'updateMov': {
+      const i=db.movs.findIndex(m=>String(m.id)===String(P.mov.id));
+      if(i<0) return false;
+      db.movs[i]={...db.movs[i], ...P.mov, fecha:normFecha(P.mov.fecha), estado:'Pendiente', aprobadoPor:''};
+      return true;
+    }
+    case 'deleteMov':
+      db.movs=db.movs.filter(m=>String(m.id)!==String(P.id));
+      return true;
+    case 'setEstado': {
+      const i=db.movs.findIndex(m=>String(m.id)===String(P.id));
+      if(i<0) return false;
+      db.movs[i].estado=P.estado;
+      db.movs[i].aprobadoPor=aprobador?aprobador.nombre:'';
+      return true;
+    }
+    case 'addTransfer': {
+      const base=Date.now();
+      db.movs.push({id:base, fecha:normFecha(P.fecha), cajaId:P.origen.cajaId, tipo:'Egreso',
+        detalle:P.origen.detalle, monto:P.monto, usuario:P.usuario, estado:'Pendiente'});
+      db.movs.push({id:base+1, fecha:normFecha(P.fecha), cajaId:P.destino.cajaId, tipo:'Ingreso',
+        detalle:P.destino.detalle, monto:P.monto, usuario:P.usuario, estado:'Pendiente'});
+      return true;
+    }
+    case 'addPend':
+      db.pendientes.push({...P.pend, cuotasPagadas:0, comprobante:P.foto?'(subiendo...)':''});
+      return true;
+    case 'deletePend':
+      db.pendientes=db.pendientes.filter(p=>String(p.id)!==String(P.id));
+      return true;
+    case 'addRubro':
+      db.rubros.push(P.rubro); return true;
+    case 'deleteRubro':
+      db.rubros=db.rubros.filter(r=>String(r.id)!==String(P.id)); return true;
+    case 'addCaja':
+      db.cajas.push(P.caja); return true;
+    case 'updateCaja': {
+      const i=db.cajas.findIndex(c=>String(c.id)===String(P.caja.id));
+      if(i<0) return false;
+      db.cajas[i]={...db.cajas[i], ...P.caja}; return true;
+    }
+    case 'deleteCaja':
+      db.cajas=db.cajas.filter(c=>String(c.id)!==String(P.id)); return true;
+    default:
+      return false; // resolverPend y otros: traemos los datos del server
+  }
+}
+
 async function mutar(payload, msgOk){
   if(ocupado) return;
   ocupado=true;
-  setEstado('sync','Guardando');
   const btn=$('btnAgregar'), txtOrig=btn?btn.textContent:'';
   if(btn){ btn.disabled=true; btn.textContent='⏳ Guardando...'; }
   const btnT=$('btnTransferir'); if(btnT) btnT.disabled=true;
+
+  // Copia de seguridad por si el servidor rechaza el cambio
+  const backup={movs:[...db.movs], pendientes:[...db.pendientes],
+                rubros:[...db.rubros], cajas:[...db.cajas]};
+  const localOk=aplicarLocal(payload);
+  if(localOk){ llenarSelects(); render(); toast(msgOk); setEstado('sync','Guardando'); }
+  else setEstado('sync','Guardando');
+
   try{
-    aplicarDatos(await apiPost(payload), true);
+    const d=await apiPost(payload);
+    if(!localOk){ // casos que necesitan el estado del server (ej: cobro de cuota)
+      aplicarDatos(await apiGet(), true);
+      toast(msgOk);
+    }
     setEstado('vivo','En vivo');
-    toast(msgOk);
     return true;
   }catch(e){
+    // revertimos lo aplicado localmente
+    db.movs=backup.movs; db.pendientes=backup.pendientes;
+    db.rubros=backup.rubros; db.cajas=backup.cajas;
+    llenarSelects(); render();
     setEstado('off','Sin conexión');
     toast('⚠️ No se guardó. Probá de nuevo.');
     return false;
@@ -607,7 +678,6 @@ async function toggleAprobador(){
   setEstado('sync','Verificando');
   try{
     const d=await apiPost({action:'loginAprobador', clave:clave.trim()});
-    aplicarDatos(d);
     if(d.aprobador){
       aprobador={nombre:d.aprobador, clave:clave.trim()};
       sessionStorage.setItem('caja_sc_aprob', JSON.stringify(aprobador));
@@ -713,7 +783,7 @@ async function resolverPend(id){
   if(r===null) return;
   const idx=parseInt(r)-1;
   if(isNaN(idx)||!db.cajas[idx]) return toast('⚠️ Número inválido');
-  await mutar({action:'resolverPend', id:p.id, cajaId:db.cajas[idx].id, fecha:hoy(), usuario},
+  await mutar({action:'resolverPend', id:p.id, cajaId:db.cajas[idx].id, fecha:hoy(), usuario, full:true},
     cuotas>1&&pagadas+1<cuotas?'✅ Cuota registrada (queda pendiente de aprobación)':'✅ Resuelto y pasado a la caja');
 }
 async function borrarPend(id){
